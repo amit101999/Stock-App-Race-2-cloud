@@ -1,0 +1,77 @@
+/* Navigation Sidebar */
+.navigation-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 250px;
+  background: white;
+  box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Navigation Header */
+.navigation-header {
+  padding: 24px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.navigation-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Navigation Items */
+.navigation-items {
+  padding: 16px 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.navigation-item {
+  width: 100%;
+  padding: 14px 20px;
+  border: none;
+  background: transparent;
+  color: #4a5568;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s ease;
+  text-align: left;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.navigation-item:hover {
+  background: #f7fafc;
+  color: #667eea;
+}
+
+.navigation-item.active {
+  background: #edf2f7;
+  color: #667eea;
+  border-left-color: #667eea;
+  font-weight: 600;
+}
+
+.navigation-item svg {
+  flex-shrink: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .navigation-sidebar {
+    width: 200px;
+  }
+}
+

@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "22744000000162010",
+      "name": "Stock-Broker-App",
+      "domain": {
+        "id": "10110149335",
+        "name": "stock-broker-app-854646752.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "854646752",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}
