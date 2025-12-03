@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Backend root provided by user (no trailing slash to avoid double slashes)
-const API_ROOT = 'https://backend-10110149335.development.catalystappsail.com';
-// const API_ROOT = 'http://localhost:3001';
+// const API_ROOT = 'https://backend-10110149335.development.catalystappsail.com';
+const API_ROOT = 'http://localhost:3001';
 
 const api = axios.create({
   baseURL: API_ROOT,
@@ -132,8 +132,8 @@ export const tradesAPI = {
       trandate_to: params.endDate,
     };
     const res = await api.get('/api/stocks/stats/summary', { params: mapped });
-    // Backend already returns the structure needed by Charts and cards
-    return { data: { data: res.data } };
+    // Return axios-like response so consumers can access res.data directly
+    return res;
   },
 
   // Get trades by stock symbol

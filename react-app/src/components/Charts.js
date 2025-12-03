@@ -11,12 +11,23 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import './Charts.css';
 
 const COLORS = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140', '#764ba2', '#f5576c'];
+
+const formatCompactNumber = (value, isCurrency = false) => {
+  if (!value) return isCurrency ? '₹0' : '0';
+  const formatter = new Intl.NumberFormat('en-IN', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+    ...(isCurrency
+      ? { style: 'currency', currency: 'INR' }
+      : {}),
+  });
+  return formatter.format(value);
+};
 
 const Charts = ({ stats }) => {
   const { overall = {}, topStocks = [], exchangeStats = [], dailyVolume = [] } = stats;
@@ -33,11 +44,18 @@ const Charts = ({ stats }) => {
   });
 
   // Prepare data for pie chart (exchange distribution)
-  const exchangeData = (exchangeStats || []).map((item) => ({
-    name: item._id || item.name || 'Unknown',
-    value: item.count || item.value || 0,
-    totalValue: item.totalValue || 0,
-  })).filter(item => item.value > 0);
+  const exchangeData = (exchangeStats || [])
+    .map((item) => ({
+      name: (item._id || item.name || '').trim(),
+      value: item.count || item.value || 0,
+      totalValue: item.totalValue || 0,
+    }))
+    .filter(item => {
+      if (!item.name) return false;
+      const normalized = item.name.toLowerCase();
+      if (normalized === 'unknown' || normalized === 'other') return false;
+      return item.value > 0 || item.totalValue > 0;
+    });
 
   // Prepare data for top stocks bar chart
   const topStocksData = (topStocks || []).map((item) => ({
@@ -47,10 +65,8 @@ const Charts = ({ stats }) => {
     quantity: item.totalQuantity || item.quantity || 0,
   })).filter(item => item.value > 0 || item.trades > 0);
 
-  // Prepare daily volume data
+  // Prepare yearly volume data (using dailyVolume key from backend but contains yearly data)
   const dailyData = (dailyVolume || [])
-    .slice() // Create a copy before reversing
-    .reverse()
     .map((item) => ({
       date: item._id || item.date || '',
       trades: item.count || item.trades || 0,
@@ -60,37 +76,64 @@ const Charts = ({ stats }) => {
     }))
     .filter(item => item.date); // Filter out items without dates
 
+  const exchangeValueTotal = exchangeData.reduce((sum, item) => sum + (item.totalValue || 0), 0);
+
+  const renderEmptyState = (message) => (
+    <div className="chart-empty-state">
+      <div className="chart-empty-icon">📊</div>
+      <p>{message}</p>
+      <span>Import or filter trades to unlock this insight.</span>
+    </div>
+  );
+
   return (
     <div className="charts-container">
       <div className="charts-grid">
-        {/* Daily Trade Volume Line Chart */}
+        {/* Yearly Trade Volume Line Chart */}
         <div className="chart-card">
-          <h3>Daily Trade Volume (Last 30 Days)</h3>
-          {dailyData.length === 0 ? (
-            <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#718096' }}>
-              No daily volume data available
+          <div className="chart-card-header">
+            <div>
+              <h3>Yearly Trade Volume (Buy/Sell Breakdown)</h3>
+              <p>Track how buying vs selling evolved year over year.</p>
             </div>
+          </div>
+          {dailyData.length === 0 ? (
+            renderEmptyState('No yearly volume data available yet.')
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
             <LineChart data={dailyData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
                 dataKey="date"
                 stroke="#718096"
                 tick={{ fontSize: 12 }}
-                angle={-45}
-                textAnchor="end"
-                height={80}
+                label={{ value: 'Year', position: 'insideBottom', offset: -5 }}
               />
-              <YAxis stroke="#718096" tick={{ fontSize: 12 }} />
+              <YAxis 
+                stroke="#718096" 
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => {
+                  if (value >= 1000000) {
+                    return `${(value / 1000000).toFixed(1)}M`;
+                  } else if (value >= 1000) {
+                    return `${(value / 1000).toFixed(1)}K`;
+                  }
+                  return value.toString();
+                }}
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'white',
                   border: '1px solid #e2e8f0',
                   borderRadius: '8px',
                 }}
+                formatter={(value, name) => {
+                  if (typeof value === 'number') {
+                    return [new Intl.NumberFormat('en-IN').format(value), name];
+                  }
+                  return [value, name];
+                }}
               />
-              <Legend />
               <Line
                 type="monotone"
                 dataKey="trades"
@@ -130,13 +173,16 @@ const Charts = ({ stats }) => {
 
         {/* Top Stocks Bar Chart */}
         <div className="chart-card">
-          <h3>Top 10 Stocks by Trade Value</h3>
-          {topStocksData.length === 0 ? (
-            <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#718096' }}>
-              No stock data available
+          <div className="chart-card-header">
+            <div>
+              <h3>Top 10 Stocks by Trade Value</h3>
+              <p>Where most of the capital is concentrated.</p>
             </div>
+          </div>
+          {topStocksData.length === 0 ? (
+            renderEmptyState('No stock data available.')
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
             <BarChart data={topStocksData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis
@@ -147,7 +193,20 @@ const Charts = ({ stats }) => {
                 textAnchor="end"
                 height={80}
               />
-              <YAxis stroke="#718096" tick={{ fontSize: 12 }} />
+              <YAxis 
+                stroke="#718096" 
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => {
+                  if (value >= 10000000) {
+                    return `₹${(value / 10000000).toFixed(1)}Cr`;
+                  } else if (value >= 100000) {
+                    return `₹${(value / 100000).toFixed(1)}L`;
+                  } else if (value >= 1000) {
+                    return `₹${(value / 1000).toFixed(1)}K`;
+                  }
+                  return `₹${value}`;
+                }}
+              />
               <Tooltip
                 contentStyle={{
                   backgroundColor: 'white',
@@ -165,7 +224,6 @@ const Charts = ({ stats }) => {
                   return value;
                 }}
               />
-              <Legend />
               <Bar dataKey="value" fill="#667eea" name="Total Value (₹)" radius={[8, 8, 0, 0]} />
               <Bar dataKey="trades" fill="#4facfe" name="Number of Trades" radius={[8, 8, 0, 0]} />
             </BarChart>
@@ -175,20 +233,22 @@ const Charts = ({ stats }) => {
 
         {/* Exchange Distribution Pie Chart */}
         <div className="chart-card">
-          <h3>Exchange Distribution</h3>
-          {exchangeData.length === 0 ? (
-            <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#718096' }}>
-              No exchange data available
+          <div className="chart-card-header">
+            <div>
+              <h3>Exchange Distribution</h3>
+              <p>Understand where your trades are executed.</p>
             </div>
+          </div>
+          {exchangeData.length === 0 ? (
+            renderEmptyState('No exchange data available.')
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
                 <Pie
                   data={exchangeData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                   outerRadius={100}
                   fill="#8884d8"
                   dataKey="totalValue"
@@ -203,12 +263,9 @@ const Charts = ({ stats }) => {
                     border: '1px solid #e2e8f0',
                     borderRadius: '8px',
                   }}
-                  formatter={(value) => {
-                    return new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      maximumFractionDigits: 0,
-                    }).format(value);
+                  formatter={(value, name, payload) => {
+                    const percent = payload && payload.percent ? (payload.percent * 100).toFixed(2) : '0.00';
+                    return [`${formatCompactNumber(value, true)} (${percent}%)`, payload?.payload?.name || name];
                   }}
                 />
               </PieChart>

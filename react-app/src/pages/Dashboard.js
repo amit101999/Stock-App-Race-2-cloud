@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { tradesAPI } from '../services/api';
 import StatCard from '../components/StatCard';
 import Charts from '../components/Charts';
@@ -18,33 +18,17 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [uploadProgress, setUploadProgress] = useState(null);
 
-  useEffect(() => {
-    fetchStats();
-    fetchFilterOptions();
-  }, []);
-
-  useEffect(() => {
-    fetchStats();
-  }, [filters]);
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await tradesAPI.getStats({
-        stockSymbol: filters.stockSymbol,
-        exchange: filters.exchange,
-        tradeType: filters.tradeType,
-        customerId: filters.customerId,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-      });
-      const serverStats = response?.data?.data || {};
+      const response = await tradesAPI.getStats();
+      const serverStats = response?.data?.data ?? response?.data ?? {};
       if (serverStats && serverStats.overall) {
         if (!serverStats.overall.totalTrades || serverStats.overall.totalTrades === 0) {
           try {
             const listRes = await tradesAPI.getTrades({
               page: 1,
               limit: 1,
-              ...filters,
             });
             const pagination = listRes?.data?.pagination || {};
             setStats({
@@ -66,7 +50,6 @@ const Dashboard = () => {
         const listRes = await tradesAPI.getTrades({
           page: 1,
           limit: 1,
-          ...filters,
         });
         const pagination = listRes?.data?.pagination || {};
         setStats({
@@ -91,7 +74,6 @@ const Dashboard = () => {
         const listRes = await tradesAPI.getTrades({
           page: 1,
           limit: 1,
-          ...filters,
         });
         const pagination = listRes?.data?.pagination || {};
         setStats({
@@ -113,7 +95,12 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    fetchFilterOptions();
+  }, [fetchStats]);
 
   const fetchFilterOptions = async () => {
     try {
