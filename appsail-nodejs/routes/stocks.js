@@ -22,6 +22,9 @@ router.get('/meta/stocks-by-client', stocksController.getStocksByClientId);
 router.get('/holdings/summary', stocksController.getHoldingsSummary);
 router.get('/holdings/:stockName/transactions', stocksController.getStockTransactionHistory);
 
+// Cost management endpoints
+router.get('/holdings/weighted-average-cost', stocksController.getWeightedAverageCost);
+
 module.exports = router;
 
 

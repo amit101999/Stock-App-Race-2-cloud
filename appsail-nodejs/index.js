@@ -7,11 +7,12 @@ const expressApp = Express();
 // Disable etag so progress polling doesn't get 304 Not Modified
 expressApp.set('etag', false);
 
-// expressApp.use(cors({
-// 	credentials: true,
-// 	methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-// 	allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
-// }));
+expressApp.use(cors({
+	origin: 'http://localhost:3000',
+	credentials: true,
+	methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+	allowedHeaders: ['Content-Type', 'Authorization', 'Cache-Control', 'Pragma', 'Expires'],
+}));
 expressApp.use(Express.json());
 
 // Inject Catalyst app per request (following Catalyst SDK pattern)
