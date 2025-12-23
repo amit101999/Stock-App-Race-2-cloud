@@ -79,6 +79,23 @@ router.post('/excel', excelUpload.single('file'), importController.importExcel);
 // POST /api/import/csv -> import CSV file (streaming, chunked processing)
 router.post('/csv', csvUpload.single('file'), importController.importCSV);
 
+// POST /api/import/bonus -> import Bonus Excel file
+router.post('/bonus', excelUpload.single('file'), importController.importBonus);
+
+// POST /api/import/seed/bonus -> seed bonus data from Stocks-bouns.txt file
+router.post('/seed/bonus', (req, res, next) => {
+	console.log('[Route] /seed/bonus POST request received');
+	console.log('[Route] Request body:', req.body);
+	next();
+}, importController.seedBonus);
+
+// POST /api/import/seed/security-list -> seed security list data from security.txt file
+router.post('/seed/security-list', (req, res, next) => {
+	console.log('[Route] /seed/security-list POST request received');
+	console.log('[Route] Request body:', req.body);
+	next();
+}, importController.seedSecurityList);
+
 // GET /api/import/progress/:id -> current progress
 router.get('/progress/:id', importController.getImportProgress);
 

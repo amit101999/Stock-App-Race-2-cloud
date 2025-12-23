@@ -54,9 +54,9 @@ export const tradesAPI = {
         exchg: r.EXCHG ?? r.exchg,
         brokerCode: r.BROKERCODE ?? r.brokercode,
         // Depository/Registrar
-        depositoryRegistrar: r['Depositoy/Registrar'] ?? r.Depository_Registrar ?? r.depository_registrar,
-        dpidAmc: r['DPID/AMC'] ?? r.dpid_amc,
-        dpClientIdFolio: r['Dp Client id/Folio'] ?? r.dp_client_id_folio,
+        depositoryRegistrar: r.Depositoy_Registrar ?? r.Depository_Registrar ?? r.depository_registrar ?? r['Depositoy/Registrar'],
+        dpidAmc: r.DPID_AMC ?? r.dpid_amc ?? r['DPID/AMC'],
+        dpClientIdFolio: r.Dp_Client_id_Folio ?? r.dp_client_id_folio ?? r['Dp Client id/Folio'],
         // Bank Information
         bankCode: r.BANKCODE ?? r.bankcode,
         bankAcid: r.BANKACID ?? r.bankacid,
@@ -64,7 +64,7 @@ export const tradesAPI = {
         qty: r.QTY ?? r.qty,
         rate: r.RATE ?? r.rate,
         brokerage: r.BROKERAGE ?? r.brokerage,
-        serviceTax: r.SERVICETAX ?? r.servicetax,
+        serviceTax: r.SERVICETAX ?? r.servicetax ?? r.serviceTax,
         netRate: r.NETRATE ?? r.netrate,
         netAmount: r['Net_Amount'] ?? r.net_amount ?? r.netAmount,
         stt: r.STT ?? r.stt,
@@ -81,19 +81,19 @@ export const tradesAPI = {
         // Payment Details
         chequeNo: r.CHEQUENO ?? r.chequeno,
         chequeDtl: r.CHEQUEDTL ?? r.chequedtl,
-        portfolioId: r.PORTFOLIOID ?? r.portfolioid,
+        portfolioId: r.PORTFOLIOID ?? r.portfolioid ?? r.portfolioId,
         deliveryDate: r.DELIVERYDATE ?? r.deliverydate,
         paymentDate: r.PAYMENTDATE ?? r.paymentdate,
         accruedInterest: r.ACCRUEDINTEREST ?? r.accruedinterest,
         // Issuer Information
-        issuer: r.ISSUER ?? r.issuer,
-        issuerName: r.ISSUERNAME ?? r.issuername,
+        issuer: r.ISSUER ?? r.issuer ?? r.Issuer,
+        issuerName: r.ISSUERNAME ?? r.issuername ?? r.issuerName,
         tdsAmount: r.TDSAMOUNT ?? r.tdsamount,
         stampDuty: r.STAMPDUTY ?? r.stampduty,
         tpmsgain: r.TPMSGAIN ?? r.tpmsgain,
         // Relationship Manager
-        rmid: r.RMID ?? r.rmid,
-        rmname: r.RMNAME ?? r.rmname,
+        rmid: r.RMID ?? r.rmid ?? r.rmId,
+        rmname: r.RMNAME ?? r.rmname ?? r.rmName,
         // Advisor Information
         advisorId: r.ADVISORID ?? r.advisorid,
         advisorName: r.ADVISORNAME ?? r.advisorname,
@@ -108,8 +108,8 @@ export const tradesAPI = {
         ownerName: r.OWNERNAME ?? r.ownername,
         wealthAdvisorName: r['WEALTHADVISOR NAME'] ?? r.wealthadvisor_name,
         // Scheme Information
-        schemeId: r.SCHEMEID ?? r.schemeid,
-        schemeName: r.SCHEMENAME ?? r.schemename,
+        schemeId: r.SCHEMEID ?? r.schemeid ?? r.schemeId,
+        schemeName: r.SCHEMENAME ?? r.schemename ?? r.schemeName,
       };
     });
     const pages = total && limit ? Math.ceil(total / limit) : 1;
@@ -177,6 +177,45 @@ export const tradesAPI = {
     return { data: { data: clientIds } };
   },
 
+  // Get unique account codes
+  getAccountCodes: async () => {
+    const timestamp = new Date().getTime();
+    const res = await api.get('/api/stocks/meta/account-codes', {
+      params: { _t: timestamp },
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
+    const accountCodes = Array.isArray(res.data) ? res.data : [];
+    console.log(`[API] getAccountCodes returned ${accountCodes.length} account codes`);
+    return { data: { data: accountCodes } };
+  },
+
+  // Get Client ID from Account Code
+  getClientIdByAccountCode: async (accountCode) => {
+    if (!accountCode) {
+      console.warn('[API] getClientIdByAccountCode called without accountCode');
+      return { data: { clientId: null } };
+    }
+    try {
+      const res = await api.get('/api/stocks/meta/client-id-by-account-code', {
+        params: { accountCode },
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+      console.log(`[API] getClientIdByAccountCode returned clientId: ${res.data?.clientId} for accountCode: ${accountCode}`);
+      return res;
+    } catch (error) {
+      console.error(`[API] Error getting clientId for accountCode ${accountCode}:`, error);
+      throw error;
+    }
+  },
+
   // Get unique stocks for a specific client ID
   getStocksByClientId: async (clientId) => {
     if (!clientId) {
@@ -202,6 +241,18 @@ export const tradesAPI = {
     return { data: { data: stocks } };
   },
 
+  // Get clients that hold a given security (with current qty)
+  getClientsBySecurity: async ({ securityName, securityCode }) => {
+    const res = await api.get('/api/stocks/meta/clients-by-security', {
+      params: {
+        securityName,
+        securityCode,
+      },
+    });
+    const data = Array.isArray(res.data) ? res.data : [];
+    return { data: { data } };
+  },
+
   // Import trades from Excel file
   importExcel: (formData) => {
     return axios.post(`${API_ROOT}/api/import/excel`, formData, {
@@ -222,6 +273,26 @@ export const tradesAPI = {
     });
   },
 
+  // Import bonus from Excel file
+  importBonus: (formData) => {
+    return axios.post(`${API_ROOT}/api/import/bonus`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 1800000, // 30 minutes timeout for very large files
+    });
+  },
+
+  // Seed bonus data from Stocks-bouns.txt file
+  seedBonus: async () => {
+    return axios.post(`${API_ROOT}/api/import/seed/bonus`, {}, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 300000, // 5 minutes timeout
+    });
+  },
+
   // Get import progress
   getImportProgress: (importId) => {
     // Must call the /api route with absolute base, not relative, to avoid 404s
@@ -233,6 +304,14 @@ export const tradesAPI = {
     return api.delete('/trades/all');
   },
 
+  // Get all clients with cumulative holdings
+  getClientsWithCumulativeHoldings: async (endDate) => {
+    const params = {};
+    if (endDate) params.endDate = endDate;
+    const res = await api.get('/api/stocks/holdings/clients-cumulative', { params });
+    return { data: { data: res.data || [] } };
+  },
+
   // Get holdings summary for a client (stock-wise holdings)
   getHoldingsSummary: async (clientId, endDate) => {
     const params = { clientId };
@@ -242,9 +321,10 @@ export const tradesAPI = {
   },
 
   // Get transaction history for a specific stock
-  getStockTransactionHistory: async (clientId, stockName, endDate) => {
+  getStockTransactionHistory: async (clientId, stockName, endDate, stockCode) => {
     const params = { clientId };
     if (endDate) params.endDate = endDate;
+    if (stockCode) params.stockCode = stockCode; // Pass stockCode to filter by Security_code
     const encodedStockName = encodeURIComponent(stockName);
     const res = await api.get(`/api/stocks/holdings/${encodedStockName}/transactions`, { params });
     // Backend returns array directly

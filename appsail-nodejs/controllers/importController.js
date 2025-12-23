@@ -678,7 +678,7 @@ exports.importCSV = async (req, res) => {
 										isProcessingChunk = false;
 										// Always resume parser to continue processing
 										try {
-											parser.resume();
+										parser.resume();
 										} catch (resumeErr) {
 											console.error(`[Import ${importId}] Error resuming parser:`, resumeErr);
 										}
@@ -1041,6 +1041,819 @@ exports.testInsert = async (req, res) => {
 			error: `Test insert failed: ${err.message}`,
 			details: err.toString(),
 			stack: err.stack
+		});
+	}
+};
+
+// Bonus table columns
+const BONUS_TABLE = 'Bonus';
+const BONUS_COLUMNS = new Set([
+	'Security-Code', 'Company-Name', 'Series', 'BonusShare', 
+	'Ex-Date', 'Record-Date', 'ClientId'
+]);
+
+// Parse date from Excel format (e.g., "08-Dec-25" -> "2025-12-08")
+function parseBonusDate(dateStr) {
+	if (!dateStr || dateStr === '' || dateStr === null) {
+		return null;
+	}
+	
+	// Try to parse as Excel date number first
+	if (typeof dateStr === 'number') {
+		// Excel date serial number (days since 1900-01-01)
+		const excelEpoch = new Date(1899, 11, 30); // Excel epoch is 1900-01-01, but JS Date is 0-indexed month
+		const date = new Date(excelEpoch.getTime() + dateStr * 24 * 60 * 60 * 1000);
+		return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+	}
+	
+	// Try parsing as string date (e.g., "08-Dec-25")
+	const dateStrTrimmed = String(dateStr).trim();
+	
+	// Pattern: DD-MMM-YY or DD-MMM-YYYY
+	const datePatterns = [
+		/^(\d{1,2})[-/](\w{3})[-/](\d{2,4})$/i, // DD-MMM-YY or DD-MMM-YYYY
+		/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/i // DD-MM-YY or DD-MM-YYYY
+	];
+	
+	for (const pattern of datePatterns) {
+		const match = dateStrTrimmed.match(pattern);
+		if (match) {
+			let day, month, year;
+			
+			if (match[2].length === 3) {
+				// MMM format (e.g., "Dec")
+				day = parseInt(match[1], 10);
+				const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+					'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+				const monthIndex = monthNames.indexOf(match[2].toLowerCase());
+				if (monthIndex === -1) {
+					continue; // Try next pattern
+				}
+				month = monthIndex + 1;
+				year = parseInt(match[3], 10);
+				// Handle 2-digit year
+				if (year < 100) {
+					year = year < 50 ? 2000 + year : 1900 + year;
+				}
+			} else {
+				// Numeric month format
+				day = parseInt(match[1], 10);
+				month = parseInt(match[2], 10);
+				year = parseInt(match[3], 10);
+				if (year < 100) {
+					year = year < 50 ? 2000 + year : 1900 + year;
+				}
+			}
+			
+			// Validate date
+			const date = new Date(year, month - 1, day);
+			if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+				return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+			}
+		}
+	}
+	
+	// Try standard Date parsing as fallback
+	try {
+		const date = new Date(dateStrTrimmed);
+		if (!isNaN(date.getTime())) {
+			return date.toISOString().split('T')[0];
+		}
+	} catch (e) {
+		// Ignore parse errors
+	}
+	
+	return null;
+}
+
+// Map bonus Excel row to database format
+function mapBonusRowToDatabaseFormat(excelRow) {
+	const dbRow = {};
+	
+	// Map each column
+	for (const [excelKey, value] of Object.entries(excelRow)) {
+		const normalizedKey = String(excelKey).trim();
+		
+		// Direct mapping (case-insensitive, handle variations)
+		let dbKey = null;
+		if (normalizedKey.toLowerCase() === 'security-code' || normalizedKey === 'Security-Code') {
+			dbKey = 'Security-Code';
+		} else if (normalizedKey.toLowerCase() === 'company-name' || normalizedKey === 'Company-Name') {
+			dbKey = 'Company-Name';
+		} else if (normalizedKey.toLowerCase() === 'series' || normalizedKey === 'Series') {
+			dbKey = 'Series';
+		} else if (normalizedKey.toLowerCase() === 'bonusshare' || normalizedKey === 'BonusShare' || normalizedKey === 'bonus-share' || normalizedKey === 'Bonus-Share') {
+			dbKey = 'BonusShare';
+		} else if (normalizedKey.toLowerCase() === 'ex-date' || normalizedKey === 'Ex-Date') {
+			dbKey = 'Ex-Date';
+		} else if (normalizedKey.toLowerCase() === 'record-date' || normalizedKey === 'Record-Date') {
+			dbKey = 'Record-Date';
+		} else if (normalizedKey.toLowerCase() === 'clientid' || normalizedKey === 'ClientId' || normalizedKey === 'Client-ID' || normalizedKey === 'Client-ID') {
+			dbKey = 'ClientId';
+		}
+		
+		if (dbKey && BONUS_COLUMNS.has(dbKey)) {
+			// Handle date columns
+			if (dbKey === 'Ex-Date' || dbKey === 'Record-Date') {
+				dbRow[dbKey] = parseBonusDate(value);
+			}
+			// Handle integer columns
+			else if (dbKey === 'BonusShare' || dbKey === 'ClientId') {
+				const num = Number(value);
+				if (dbKey === 'ClientId') {
+					if (!isNaN(num)) {
+						// Keep as string to avoid numeric formatting issues in varchar column
+						dbRow[dbKey] = String(Math.floor(num));
+					} else if (value !== null && value !== undefined && value !== '') {
+						dbRow[dbKey] = String(value).trim();
+					} else {
+						dbRow[dbKey] = null;
+					}
+				} else {
+					// BonusShare: total bonus quantity (integer)
+					dbRow[dbKey] = isNaN(num) ? 0 : Math.floor(num);
+				}
+			}
+			// Handle string columns
+			else {
+				dbRow[dbKey] = value !== null && value !== undefined ? String(value).trim() : null;
+			}
+		}
+	}
+	
+	return dbRow;
+}
+
+// Import Bonus Excel file
+exports.importBonus = async (req, res) => {
+	try {
+		const app = req.catalystApp;
+		if (!app) {
+			return res.status(500).json({ 
+				success: false, 
+				error: 'Catalyst app context missing' 
+			});
+		}
+
+		if (!req.file) {
+			return res.status(400).json({ 
+				success: false, 
+				error: 'No file uploaded' 
+			});
+		}
+
+		// Store file buffer before async context
+		const fileBuffer = Buffer.from(req.file.buffer);
+		const fileName = req.file.originalname;
+		const fileSize = req.file.size;
+
+		// Start async import and return importId immediately
+		const importId = newImportId();
+
+		IMPORT_PROGRESS.set(importId, {
+			stage: 'parsing',
+			progress: 5,
+			message: 'Parsing Bonus Excel...',
+			totalRows: 0,
+			processedRows: 0,
+			imported: 0,
+			errors: 0,
+			errorDetails: []
+		});
+
+		// Kick off background processing
+		setImmediate(async () => {
+			const tableName = BONUS_TABLE;
+			const progress = IMPORT_PROGRESS.get(importId);
+			try {
+				// Re-initialize Catalyst app in async context
+				const appAsync = catalyst.initialize(req);
+				if (!appAsync) {
+					throw new Error('Failed to initialize Catalyst app');
+				}
+
+				// Parse Excel using stored buffer
+				let excelRows;
+				try {
+					excelRows = parseExcelFile(fileBuffer);
+				} catch (parseErr) {
+					console.error(`[Bonus Import ${importId}] Parse error:`, parseErr);
+					throw new Error(`Failed to parse Excel: ${parseErr.message}`);
+				}
+				if (!excelRows || excelRows.length === 0) {
+					throw new Error('Excel file is empty or has no data rows');
+				}
+
+				progress.totalRows = excelRows.length;
+				progress.stage = 'mapping';
+				progress.progress = 15;
+				progress.message = 'Mapping bonus columns...';
+
+				// Map rows
+				const mappedRows = excelRows.map((row, idx) => {
+					try {
+						return mapBonusRowToDatabaseFormat(row);
+					} catch (mapErr) {
+						console.error(`[Bonus Import ${importId}] Error mapping row ${idx + 1}:`, mapErr);
+						return null;
+					}
+				}).filter(row => {
+					if (!row) return false;
+					// Filter out rows with no essential data
+					const hasData = Object.values(row).some(val => val !== null && val !== '');
+					return hasData;
+				});
+
+				if (mappedRows.length === 0) {
+					throw new Error('No valid rows found after mapping. Check column headers match schema.');
+				}
+
+				// Insert
+				progress.stage = 'inserting';
+				progress.progress = 25;
+				progress.message = 'Inserting into Bonus table...';
+
+				const datastore = appAsync.datastore();
+				const table = datastore.table(tableName);
+				let totalInserted = 0;
+				let errorCount = 0;
+				const errorMessages = [];
+				const BATCH_SIZE = 200; // Zoho Catalyst limit
+
+				const insertBatch = async (batch) => {
+					if (typeof table.insertRows === 'function') {
+						await table.insertRows(batch);
+					} else if (typeof table.bulkWriteRows === 'function') {
+						await table.bulkWriteRows(batch);
+					} else if (typeof table.insertRow === 'function') {
+						for (const row of batch) {
+							await table.insertRow(row);
+						}
+					} else {
+						throw new Error('No suitable insert method available');
+					}
+				};
+
+				for (let i = 0; i < mappedRows.length; i += BATCH_SIZE) {
+					const batch = mappedRows.slice(i, i + BATCH_SIZE);
+					const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+					try {
+						await insertBatch(batch);
+						totalInserted += batch.length;
+					} catch (batchErr) {
+						console.error(`[Bonus Import ${importId}] Batch ${batchNum} failed:`, batchErr.message);
+						// Try per-row fallback
+						for (let j = 0; j < batch.length; j++) {
+							const row = batch[j];
+							try {
+								if (typeof table.insertRow === 'function') {
+									await table.insertRow(row);
+									totalInserted++;
+								} else if (typeof table.bulkWriteRows === 'function') {
+									await table.bulkWriteRows([row]);
+									totalInserted++;
+								} else {
+									throw new Error('No per-row insert available');
+								}
+							} catch (rowErr) {
+								errorCount++;
+								const errMsg = `Row ${i + j + 1}: ${rowErr.message}`;
+								errorMessages.push(errMsg);
+								if (errorMessages.length <= 10) {
+									console.error(`[Bonus Import ${importId}] ${errMsg}`);
+								}
+							}
+						}
+					}
+					progress.processedRows = Math.min(i + batch.length, mappedRows.length);
+					progress.imported = totalInserted;
+					progress.errors = errorCount;
+					progress.errorDetails = errorMessages.slice(0, 10);
+					progress.progress = Math.min(95, Math.round((progress.processedRows / mappedRows.length) * 90) + 5);
+					progress.message = `Inserted ${totalInserted}/${mappedRows.length} bonus records...`;
+					IMPORT_PROGRESS.set(importId, progress);
+				}
+
+				console.log(`[Bonus Import ${importId}] Import completed: ${totalInserted} inserted, ${errorCount} errors`);
+				progress.stage = 'completed';
+				progress.progress = 100;
+				progress.message = `Imported ${totalInserted} of ${mappedRows.length} bonus records${errorCount > 0 ? ` (${errorCount} errors)` : ''}`;
+			} catch (err) {
+				console.error(`[Bonus Import ${importId}] Fatal error:`, err);
+				progress.stage = 'error';
+				progress.message = err.message || 'Bonus import failed';
+				progress.errorDetails = [err.toString()];
+				if (err.stack) {
+					console.error(`[Bonus Import ${importId}] Stack:`, err.stack);
+				}
+			}
+			IMPORT_PROGRESS.set(importId, progress);
+		});
+
+		return res.status(200).json({
+			success: true,
+			importId,
+			message: 'Bonus import started'
+		});
+
+	} catch (err) {
+		console.error('Bonus import error:', err);
+		return res.status(500).json({ 
+			success: false, 
+			error: `Failed to import Bonus Excel file: ${err.message}` 
+		});
+	}
+};
+
+// Seed bonus data from Stocks-bouns.txt file
+exports.seedBonus = async (req, res) => {
+	console.log('[Seed Bonus] Route called');
+	
+	try {
+		const app = req.catalystApp;
+		if (!app) {
+			console.error('[Seed Bonus] Catalyst app context missing');
+			return res.status(500).json({ 
+				success: false,
+				message: "Catalyst app context missing" 
+			});
+		}
+
+		console.log('[Seed Bonus] Catalyst app initialized, starting background process');
+
+		// Return immediately and process in background
+		res.status(202).json({
+			success: true,
+			message: 'Bonus seed process started. This may take several minutes. Check server logs for progress.',
+			status: 'processing'
+		});
+
+		// Run seed in background
+		setImmediate(async () => {
+			try {
+				// Re-initialize Catalyst app in async context
+				const appAsync = catalyst.initialize(req);
+				if (!appAsync) {
+					throw new Error('Failed to initialize Catalyst app');
+				}
+
+				console.log('[Seed Bonus] Starting seed process...');
+				
+				const fs = require('fs');
+				const path = require('path');
+
+				const BONUS_TABLE = 'Bonus';
+				const CLIENT_IDS_TABLE = 'clientIds';
+				const BATCH_SIZE = 200;
+
+				// Parse date function
+				function parseDate(dateStr) {
+					if (!dateStr || dateStr === '' || dateStr === null) {
+						return null;
+					}
+					const dateStrTrimmed = String(dateStr).trim();
+					const datePattern = /^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/;
+					const match = dateStrTrimmed.match(datePattern);
+					if (match) {
+						const day = parseInt(match[1], 10);
+						const month = parseInt(match[2], 10);
+						let year = parseInt(match[3], 10);
+						if (year < 100) {
+							year = year < 50 ? 2000 + year : 1900 + year;
+						}
+						const date = new Date(year, month - 1, day);
+						if (date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day) {
+							return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+						}
+					}
+					return null;
+				}
+
+				// Find file
+				const possiblePaths = [
+					path.join(__dirname, '..', 'react-app', 'Stocks-bouns.txt'), // Stocks-app/appsail-nodejs/../react-app/Stocks-bouns.txt
+					path.join(__dirname, '..', '..', 'react-app', 'Stocks-bouns.txt'), // If __dirname is deeper
+					path.join(process.cwd(), 'Stocks-app', 'react-app', 'Stocks-bouns.txt'),
+					path.join(process.cwd(), 'react-app', 'Stocks-bouns.txt'),
+					path.join(process.cwd(), 'Stocks-bouns.txt'),
+					path.join(__dirname, '..', 'Stocks-bouns.txt') // Fallback
+				];
+				
+				let filePath = null;
+				for (const p of possiblePaths) {
+					if (fs.existsSync(p)) {
+						filePath = p;
+						break;
+					}
+				}
+				
+				if (!filePath) {
+					throw new Error(`File not found. Tried: ${possiblePaths.join(', ')}`);
+				}
+
+				console.log(`[Seed Bonus] Using file: ${filePath}`);
+
+				// Parse file
+				const content = fs.readFileSync(filePath, 'utf-8');
+				const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+				
+				if (lines.length < 2) {
+					throw new Error('File must have at least a header row and one data row');
+				}
+				
+				const headers = lines[0].split('\t').map(h => h.trim());
+				// Use new field names only
+				const wsAccountCodeIdx = headers.findIndex(h => h.toLowerCase().trim() === 'wsaccountcode');
+				const securityCodeIdx = headers.findIndex(h => h.toLowerCase().trim() === 'securitycode');
+				const exDateIdx = headers.findIndex(h => h.toLowerCase().trim() === 'exdate');
+				const companyNameIdx = headers.findIndex(h => h.toLowerCase().trim() === 'companyname');
+				const exchgIdx = headers.findIndex(h => h.toLowerCase() === 'exchg');
+				const schemeNameIdx = headers.findIndex(h => h.toLowerCase() === 'schemename');
+				const bonusShareIdx = headers.findIndex(h => h.toLowerCase() === 'bonusshare');
+				
+				if (wsAccountCodeIdx === -1 || securityCodeIdx === -1 || exDateIdx === -1 || 
+					companyNameIdx === -1 || bonusShareIdx === -1) {
+					throw new Error(`Required columns not found in header. Found: ${headers.join(', ')}`);
+				}
+
+				const bonusRows = [];
+				for (let i = 1; i < lines.length; i++) {
+					const values = lines[i].split('\t');
+					if (values.length < headers.length) continue;
+					
+					const wsAccountCode = values[wsAccountCodeIdx]?.trim() || '';
+					const securityCode = values[securityCodeIdx]?.trim() || '';
+					const exDateStr = values[exDateIdx]?.trim() || '';
+					const companyName = values[companyNameIdx]?.trim() || '';
+					const exchg = values[exchgIdx]?.trim() || '';
+					const schemeName = values[schemeNameIdx]?.trim() || '';
+					const bonusShareStr = values[bonusShareIdx]?.trim() || '0';
+					
+					if (!wsAccountCode && !securityCode && !companyName) continue;
+					
+					bonusRows.push({
+						'wsAccountCode': wsAccountCode,
+						'SecurityCode': securityCode,
+						'ExDate': parseDate(exDateStr),
+						'CompanyName': companyName,
+						'EXCHG': exchg || null,
+						'SCHEMENAME': schemeName || null,
+						'BonusShare': parseInt(bonusShareStr, 10) || 0,
+						'ClientId': null
+					});
+				}
+
+				console.log(`[Seed Bonus] Parsed ${bonusRows.length} bonus rows`);
+
+				// Load clientIds mapping
+				const zcql = appAsync.zcql();
+				const mapping = new Map();
+				const batchSize = 250;
+				let offset = 0;
+				let hasMore = true;
+				
+				console.log('[Seed Bonus] Loading clientIds mapping...');
+				while (hasMore) {
+					const query = `SELECT * FROM ${CLIENT_IDS_TABLE} WHERE ${CLIENT_IDS_TABLE}.ws_account_code IS NOT NULL LIMIT ${batchSize} OFFSET ${offset}`;
+					const rows = await zcql.executeZCQLQuery(query, []);
+					
+					if (!rows || rows.length === 0) {
+						hasMore = false;
+						break;
+					}
+					
+					rows.forEach((row) => {
+						const r = row.clientIds || row[CLIENT_IDS_TABLE] || row;
+						const wsAccountCode = r.ws_account_code || r.WS_Account_code || r['ws_account_code'];
+						const clientId = r.clientId || r.ClientId || r.client_id;
+						
+						if (wsAccountCode && clientId) {
+							const accountCode = String(wsAccountCode).trim();
+							const clientIdNum = Number(clientId);
+							if (!isNaN(clientIdNum)) {
+								mapping.set(accountCode, clientIdNum);
+							}
+						}
+					});
+					
+					if (rows.length < batchSize) {
+						hasMore = false;
+					} else {
+						offset += batchSize;
+						if (offset > 100000) hasMore = false;
+					}
+				}
+
+				console.log(`[Seed Bonus] Loaded ${mapping.size} client ID mappings`);
+
+				// Match ClientId
+				let matchedCount = 0;
+				let unmatchedCount = 0;
+				for (const row of bonusRows) {
+					const accountCode = row['wsAccountCode'];
+					const clientId = mapping.get(accountCode);
+					if (clientId) {
+						row['ClientId'] = clientId;
+						matchedCount++;
+					} else {
+						unmatchedCount++;
+						if (unmatchedCount <= 10) {
+							console.warn(`[Seed Bonus] No ClientId found for account code: ${accountCode}`);
+						}
+					}
+				}
+
+				console.log(`[Seed Bonus] Matched ClientId for ${matchedCount} rows, ${unmatchedCount} unmatched`);
+
+				// Insert rows
+				const datastore = appAsync.datastore();
+				const table = datastore.table(BONUS_TABLE);
+				let totalInserted = 0;
+				let totalErrors = 0;
+
+				console.log('[Seed Bonus] Inserting bonus rows...');
+				for (let i = 0; i < bonusRows.length; i += BATCH_SIZE) {
+					const batch = bonusRows.slice(i, i + BATCH_SIZE);
+					const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+					const totalBatches = Math.ceil(bonusRows.length / BATCH_SIZE);
+					
+					try {
+						if (typeof table.insertRows === 'function') {
+							await table.insertRows(batch);
+							totalInserted += batch.length;
+						} else if (typeof table.bulkWriteRows === 'function') {
+							await table.bulkWriteRows(batch);
+							totalInserted += batch.length;
+						} else {
+							for (const row of batch) {
+								try {
+									await table.insertRow(row);
+									totalInserted++;
+								} catch (err) {
+									totalErrors++;
+									console.error(`[Seed Bonus] Error inserting row:`, err.message);
+								}
+							}
+						}
+						console.log(`[Seed Bonus] Inserted batch ${batchNum}/${totalBatches} (${totalInserted} total)`);
+					} catch (err) {
+						console.error(`[Seed Bonus] Error inserting batch ${batchNum}:`, err.message);
+						totalErrors += batch.length;
+					}
+				}
+
+				// Update existing rows
+				console.log('[Seed Bonus] Updating existing bonus rows...');
+				let totalUpdated = 0;
+				let updateErrors = 0;
+				offset = 0;
+				hasMore = true;
+
+				while (hasMore) {
+					const query = `SELECT * FROM ${BONUS_TABLE} WHERE ${BONUS_TABLE}.wsAccountCode IS NOT NULL LIMIT ${batchSize} OFFSET ${offset}`;
+					const rows = await zcql.executeZCQLQuery(query, []);
+					
+					if (!rows || rows.length === 0) {
+						hasMore = false;
+						break;
+					}
+					
+					for (const row of rows) {
+						const r = row.Bonus || row[BONUS_TABLE] || row;
+						const rowId = r.ROWID || r.rowid;
+						const wsAccountCode = r.wsAccountCode || r['wsAccountCode'];
+						
+						if (rowId && wsAccountCode) {
+							const accountCode = String(wsAccountCode).trim();
+							const clientId = mapping.get(accountCode);
+							if (clientId && (!r.ClientId || r.ClientId === null)) {
+								try {
+									await table.updateRow({
+										ROWID: rowId,
+										ClientId: clientId
+									});
+									totalUpdated++;
+								} catch (err) {
+									updateErrors++;
+									console.error(`[Seed Bonus] Error updating row ${rowId}:`, err.message);
+								}
+							}
+						}
+					}
+					
+					if (rows.length < batchSize) {
+						hasMore = false;
+					} else {
+						offset += batchSize;
+						if (offset > 100000) hasMore = false;
+					}
+				}
+
+				console.log('[Seed Bonus] ===== COMPLETED =====');
+				console.log(`[Seed Bonus] Total rows parsed: ${bonusRows.length}`);
+				console.log(`[Seed Bonus] Rows with matched ClientId: ${matchedCount}`);
+				console.log(`[Seed Bonus] Rows without matching ClientId: ${unmatchedCount}`);
+				console.log(`[Seed Bonus] Rows inserted: ${totalInserted}`);
+				console.log(`[Seed Bonus] Insert errors: ${totalErrors}`);
+				console.log(`[Seed Bonus] Existing rows updated: ${totalUpdated}`);
+				console.log(`[Seed Bonus] Update errors: ${updateErrors}`);
+				console.log('[Seed Bonus] =======================');
+
+			} catch (err) {
+				console.error('[Seed Bonus] Fatal error:', err);
+				console.error('[Seed Bonus] Stack:', err.stack);
+			}
+		});
+
+	} catch (err) {
+		console.error('[Seed Bonus] Controller error:', err);
+		return res.status(500).json({
+			success: false,
+			message: 'Failed to start seed process',
+			error: err.message
+		});
+	}
+};
+
+// Seed Security_List data from security.txt file
+exports.seedSecurityList = async (req, res) => {
+	console.log('[Seed Security List] Route called');
+	try {
+		const app = req.catalystApp;
+		if (!app) {
+			console.error('[Seed Security List] Catalyst app context missing');
+			return res.status(500).json({
+				success: false,
+				message: "Catalyst app context missing"
+			});
+		}
+
+		console.log('[Seed Security List] Catalyst app initialized, starting background process');
+
+		res.status(202).json({
+			success: true,
+			message: 'Security List seed process started. This may take several minutes. Check server logs for progress.',
+			status: 'processing'
+		});
+
+		setImmediate(async () => {
+			try {
+				const appAsync = catalyst.initialize(req);
+				if (!appAsync) {
+					throw new Error('Failed to initialize Catalyst app');
+				}
+
+				console.log('[Seed Security List] Starting seed process...');
+
+				const fs = require('fs');
+				const path = require('path');
+
+				const SECURITY_LIST_TABLE = 'Security_List';
+				const BATCH_SIZE = 200;
+
+				// Find file
+				const possiblePaths = [
+					path.join(__dirname, '..', 'react-app', 'security.txt'),
+					path.join(__dirname, '..', '..', 'react-app', 'security.txt'),
+					path.join(process.cwd(), 'Stocks-app', 'react-app', 'security.txt'),
+					path.join(process.cwd(), 'react-app', 'security.txt'),
+					path.join(process.cwd(), 'security.txt'),
+					path.join(__dirname, '..', 'security.txt')
+				];
+
+				let filePath = null;
+				for (const p of possiblePaths) {
+					if (fs.existsSync(p)) {
+						filePath = p;
+						break;
+					}
+				}
+
+				if (!filePath) {
+					throw new Error(`File not found. Tried: ${possiblePaths.join(', ')}`);
+				}
+
+				console.log(`[Seed Security List] Found file at: ${filePath}`);
+
+				// Parse file (tab-separated)
+				const content = fs.readFileSync(filePath, 'utf-8');
+				const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+
+				if (lines.length < 2) {
+					throw new Error('File must have at least a header row and one data row');
+				}
+
+				// Parse header
+				const headers = lines[0].split('\t').map(h => h.trim());
+				const securityCodeIdx = headers.findIndex(h => 
+					h.toLowerCase() === 'security_code' || 
+					h.toLowerCase() === 'security-code' ||
+					h.toLowerCase() === 'securitycode'
+				);
+				const securityNameIdx = headers.findIndex(h => 
+					h.toLowerCase() === 'security_name' || 
+					h.toLowerCase() === 'security-name' ||
+					h.toLowerCase() === 'securityname'
+				);
+
+				if (securityCodeIdx === -1 || securityNameIdx === -1) {
+					throw new Error(`Required columns not found. Expected: Security_Code, Security_Name. Found headers: ${headers.join(', ')}`);
+				}
+
+				console.log(`[Seed Security List] Headers found: ${headers.join(', ')}`);
+				console.log(`[Seed Security List] Security_Code index: ${securityCodeIdx}, Security_Name index: ${securityNameIdx}`);
+
+				// Parse data rows
+				const securityRows = [];
+				for (let i = 1; i < lines.length; i++) {
+					const values = lines[i].split('\t');
+					if (values.length < headers.length) {
+						console.warn(`[Seed Security List] Skipping row ${i + 1}: insufficient columns (expected ${headers.length}, got ${values.length})`);
+						continue;
+					}
+
+					const securityCode = (values[securityCodeIdx] || '').trim();
+					const securityName = (values[securityNameIdx] || '').trim();
+
+					if (!securityCode || !securityName) {
+						console.warn(`[Seed Security List] Skipping row ${i + 1}: missing Security_Code or Security_Name`);
+						continue;
+					}
+
+					securityRows.push({
+						Security_Code: securityCode,
+						Security_Name: securityName
+					});
+				}
+
+				console.log(`[Seed Security List] Parsed ${securityRows.length} security rows from file.`);
+
+				if (securityRows.length === 0) {
+					console.warn('[Seed Security List] No security data found in the file after parsing.');
+					return;
+				}
+
+				// Insert security rows
+				const datastore = appAsync.datastore();
+				const securityTable = datastore.table(SECURITY_LIST_TABLE);
+				let totalInserted = 0;
+				let totalSkipped = 0;
+				let totalErrors = 0;
+				const errors = [];
+
+				for (let i = 0; i < securityRows.length; i += BATCH_SIZE) {
+					const batch = securityRows.slice(i, i + BATCH_SIZE);
+					const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+					try {
+						await securityTable.insertRows(batch);
+						totalInserted += batch.length;
+						console.log(`[Seed Security List] Inserted batch ${batchNum}: ${batch.length} rows. Total inserted: ${totalInserted}`);
+					} catch (insertErr) {
+						console.error(`[Seed Security List] Error inserting batch ${batchNum}:`, insertErr.message);
+						// Attempt single row insertion to identify duplicates vs other errors
+						for (const row of batch) {
+							try {
+								await securityTable.insertRow(row);
+								totalInserted++;
+							} catch (singleInsertErr) {
+								if (singleInsertErr.message && (
+									singleInsertErr.message.includes('unique') ||
+									singleInsertErr.message.includes('duplicate') ||
+									singleInsertErr.message.includes('UNIQUE constraint')
+								)) {
+									totalSkipped++;
+									// console.log(`[Seed Security List] Skipped duplicate security: ${row.Security_Code}`);
+								} else {
+									totalErrors++;
+									errors.push({ row: row, error: singleInsertErr.message });
+									console.error(`[Seed Security List] Error inserting single security row (${row.Security_Code}):`, singleInsertErr.message);
+								}
+							}
+						}
+					}
+				}
+
+				console.log(`[Seed Security List] Seed process completed.`);
+				console.log(`[Seed Security List] Total rows processed from file: ${securityRows.length}`);
+				console.log(`[Seed Security List] Total security rows inserted: ${totalInserted}`);
+				console.log(`[Seed Security List] Total security rows skipped (duplicates): ${totalSkipped}`);
+				console.log(`[Seed Security List] Total security rows with errors: ${totalErrors}`);
+				if (errors.length > 0) {
+					console.error('[Seed Security List] Sample errors:', errors.slice(0, 5));
+				}
+
+			} catch (err) {
+				console.error('[Seed Security List] Background process error:', err);
+				console.error('[Seed Security List] Stack:', err.stack);
+			}
+		});
+
+	} catch (err) {
+		console.error('[Seed Security List] Route handler error:', err);
+		return res.status(500).json({
+			success: false,
+			message: 'Failed to start seed process',
+			error: err.message
 		});
 	}
 };

@@ -3,6 +3,8 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import Navigation from './components/Navigation';
 import Dashboard from './pages/Dashboard';
 import Analytics from './pages/Analytics';
+import Bonus from './pages/Bonus';
+import Split from './pages/Split';
 import './App.css';
 
 function App() {
@@ -17,6 +19,8 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/bonus" element={<Bonus />} />
+            <Route path="/split" element={<Split />} />
           </Routes>
         </div>
       </div>

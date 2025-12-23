@@ -10,9 +10,10 @@ import './Analytics.css';
 const Analytics = () => {
   const navigate = useNavigate();
   const [filters, setFilters] = useState({});
-  const [clientIds, setClientIds] = useState([]);
+  const [accountCodes, setAccountCodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [accountCodeToClientId, setAccountCodeToClientId] = useState({}); // Cache for account code -> client ID mapping
   const [holdings, setHoldings] = useState([]);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
   const [holdingsError, setHoldingsError] = useState(null);
@@ -25,12 +26,12 @@ const Analytics = () => {
 
 
   useEffect(() => {
-    // Fetch holdings when client ID is selected, or when date is selected (even without client ID)
-    if (filters.customerId || filters.endDate) {
+    // Fetch stocks for selected client only
+    if (filters.customerId) {
       fetchHoldingsSummary();
     } else {
+      // Clear holdings when no client is selected
       setHoldings([]);
-      setHoldingsError(null);
     }
   }, [filters.customerId, filters.endDate]);
 
@@ -38,55 +39,99 @@ const Analytics = () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('[Analytics] Fetching client IDs...');
+      console.log('[Analytics] Fetching account codes...');
       const startTime = Date.now();
       
-      const clientIdsRes = await tradesAPI.getClientIds();
+      const accountCodesRes = await tradesAPI.getAccountCodes();
       
-      console.log('[Analytics] Raw API response:', clientIdsRes);
+      console.log('[Analytics] Raw API response:', accountCodesRes);
       
       // Handle both direct array response and wrapped response
-      const clientIdsData = clientIdsRes?.data?.data || clientIdsRes?.data || [];
+      const accountCodesData = accountCodesRes?.data?.data || accountCodesRes?.data || [];
       
-      console.log('[Analytics] Extracted clientIdsData:', clientIdsData);
-      console.log('[Analytics] Is array?', Array.isArray(clientIdsData));
-      console.log('[Analytics] Length:', clientIdsData?.length);
+      console.log('[Analytics] Extracted accountCodesData:', accountCodesData);
+      console.log('[Analytics] Is array?', Array.isArray(accountCodesData));
+      console.log('[Analytics] Length:', accountCodesData?.length);
       
-      const sortedClientIds = Array.isArray(clientIdsData) 
-        ? [...new Set(clientIdsData)].sort() 
+      const sortedAccountCodes = Array.isArray(accountCodesData) 
+        ? [...new Set(accountCodesData)].sort() 
         : [];
       
       const duration = Date.now() - startTime;
-      console.log(`[Analytics] Loaded ${sortedClientIds.length} client IDs in ${duration}ms`);
-      console.log(`[Analytics] First 5 IDs:`, sortedClientIds.slice(0, 5));
-      console.log(`[Analytics] Last 5 IDs:`, sortedClientIds.slice(-5));
+      console.log(`[Analytics] Loaded ${sortedAccountCodes.length} account codes in ${duration}ms`);
+      console.log(`[Analytics] First 5 codes:`, sortedAccountCodes.slice(0, 5));
+      console.log(`[Analytics] Last 5 codes:`, sortedAccountCodes.slice(-5));
       
-      if (sortedClientIds.length === 0) {
-        setError('No client IDs found. Please check your database connection.');
+      if (sortedAccountCodes.length === 0) {
+        setError('No account codes found. Please check your database connection.');
       }
       
-      setClientIds(sortedClientIds);
+      setAccountCodes(sortedAccountCodes);
     } catch (error) {
       console.error('[Analytics] Error fetching filter options:', error);
       console.error('[Analytics] Error response:', error.response);
       console.error('[Analytics] Error details:', error.response?.data || error.message);
       
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch client IDs';
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch account codes';
       setError(`Error: ${errorMessage}. Please check your backend server and database connection.`);
-      setClientIds([]);
+      setAccountCodes([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClientIdChange = (value) => {
-    // Clear stock filter when client changes
+  const handleAccountCodeChange = async (accountCode) => {
+    // Clear stock filter when account code changes
+    if (!accountCode) {
+      setFilters({ 
+        ...filters, 
+        customerId: undefined,
+        accountCode: undefined,
+        stockName: undefined
+      });
+      setHoldings([]);
+      return;
+    }
+
+    // Check if we already have the client ID cached
+    let clientId = accountCodeToClientId[accountCode];
+    
+    if (!clientId) {
+      // Fetch client ID from account code
+      try {
+        console.log(`[Analytics] Resolving client ID for account code: ${accountCode}`);
+        const clientIdRes = await tradesAPI.getClientIdByAccountCode(accountCode);
+        clientId = clientIdRes?.data?.clientId;
+        
+        if (!clientId) {
+          console.error(`[Analytics] No client ID found for account code: ${accountCode}`);
+          setError(`No client ID found for account code: ${accountCode}`);
+          return;
+        }
+        
+        // Cache the mapping
+        setAccountCodeToClientId(prev => ({
+          ...prev,
+          [accountCode]: clientId
+        }));
+        
+        console.log(`[Analytics] Resolved client ID ${clientId} for account code ${accountCode}`);
+      } catch (error) {
+        console.error(`[Analytics] Error resolving client ID for account code ${accountCode}:`, error);
+        setError(`Failed to resolve client ID for account code: ${accountCode}`);
+        return;
+      }
+    }
+
+    // Update filters with both account code and client ID
     setFilters({ 
       ...filters, 
-      customerId: value || undefined,
-      stockName: undefined // Clear stock when client changes
+      customerId: clientId,
+      accountCode: accountCode,
+      stockName: undefined // Clear stock when account code changes
     });
   };
+
 
   const handleDateChange = (value) => {
     setFilters({ 
@@ -98,6 +143,7 @@ const Analytics = () => {
   const clearFilters = () => {
     const newFilters = { ...filters };
     delete newFilters.customerId;
+    delete newFilters.accountCode;
     delete newFilters.endDate;
     setFilters(newFilters);
     setHoldings([]);
@@ -151,7 +197,54 @@ const Analytics = () => {
     setSelectedStock(null);
   };
 
-  const hasActiveFilters = filters.customerId || filters.endDate;
+  const hasActiveFilters = filters.accountCode || filters.endDate;
+
+  const renderAccountCodeField = () => {
+    if (error) {
+      return (
+        <div className="filter-inline-wrapper">
+          <label htmlFor="analytics-account-code" className="filter-input-label">
+            Account Code
+          </label>
+          <div className="filter-select" style={{ borderColor: '#e53e3e', color: '#e53e3e' }}>
+            Error loading account codes
+          </div>
+          <button 
+            onClick={fetchFilterOptions}
+            className="retry-btn"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="filter-inline-wrapper">
+        <label htmlFor="analytics-account-code" className="filter-input-label">
+          Account Code
+        </label>
+        <SearchableSelect
+          id="analytics-account-code"
+          label=""
+          value={filters.accountCode || ''}
+          onChange={handleAccountCodeChange}
+          options={accountCodes}
+          placeholder={loading ? 'Loading account codes...' : 'All Account Codes'}
+          searchPlaceholder="Search account code..."
+          description=""
+          disabled={loading}
+          countText={
+            loading
+              ? 'Loading account codes...'
+              : accountCodes.length > 0
+                ? `${accountCodes.length} account code${accountCodes.length !== 1 ? 's' : ''} available`
+                : 'No account codes found'
+          }
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="analytics-page">
@@ -170,12 +263,6 @@ const Analytics = () => {
       </div>
 
       <div className="analytics-page-content">
-        {loading ? (
-          <div className="loading-container">
-            <div className="spinner"></div>
-            <p>Loading filters...</p>
-          </div>
-        ) : (
           <div className="analytics-filters-container">
             <div className="filter-section">
               <div className="filter-label-wrapper">
@@ -185,50 +272,9 @@ const Analytics = () => {
 
               {/* Filters Row */}
               <div className="filters-row">
-                {/* Client ID Filter */}
+                {/* Account Code Filter */}
                 <div className="filter-group-inline">
-                  {loading ? (
-                    <div className="filter-inline-wrapper">
-                      <label htmlFor="analytics-client-id" className="filter-input-label">
-                        Client ID
-                      </label>
-                      <div className="filter-select" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                        Loading client IDs...
-                      </div>
-                    </div>
-                  ) : error ? (
-                    <div className="filter-inline-wrapper">
-                      <label htmlFor="analytics-client-id" className="filter-input-label">
-                        Client ID
-                      </label>
-                      <div className="filter-select" style={{ borderColor: '#e53e3e', color: '#e53e3e' }}>
-                        Error loading client IDs
-                      </div>
-                      <button 
-                        onClick={fetchFilterOptions}
-                        className="retry-btn"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="filter-inline-wrapper">
-                      <label htmlFor="analytics-client-id" className="filter-input-label">
-                        Client ID
-                      </label>
-                      <SearchableSelect
-                        id="analytics-client-id"
-                        label=""
-                        value={filters.customerId || ''}
-                        onChange={handleClientIdChange}
-                        options={clientIds}
-                        placeholder="All Clients"
-                        searchPlaceholder="Search client ID..."
-                        description=""
-                        countText={clientIds.length > 0 ? `${clientIds.length} client${clientIds.length !== 1 ? 's' : ''} available` : 'No client IDs found'}
-                      />
-                    </div>
-                  )}
+                {renderAccountCodeField()}
                 </div>
 
                 {/* Date Filter */}
@@ -272,9 +318,9 @@ const Analytics = () => {
                 <div className="active-filters">
                   <h4 className="active-filters-title">Active Filters:</h4>
                   <div className="active-filters-list">
-                    {filters.customerId && (
+                    {filters.accountCode && (
                       <span className="active-filter-badge">
-                        Client ID: {filters.customerId}
+                        Account Code: {filters.accountCode}
                       </span>
                     )}
                     {filters.endDate && (
@@ -287,10 +333,9 @@ const Analytics = () => {
               )}
             </div>
           </div>
-        )}
 
-        {/* Holdings List */}
-        {(filters.customerId || filters.endDate) && (
+        {/* Holdings List - Show when client is selected */}
+        {filters.customerId ? (
           <div className="holdings-section">
             {holdingsError ? (
               <div className="holdings-error">
@@ -319,7 +364,7 @@ const Analytics = () => {
               />
             )}
           </div>
-        )}
+        ) : null}
 
         {/* Stock Detail Modal */}
         <StockDetailModal
