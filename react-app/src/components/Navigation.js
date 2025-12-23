@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, LayoutDashboard } from 'lucide-react';
+import { BarChart3, LayoutDashboard, Gift, Scissors } from 'lucide-react';
 import './Navigation.css';
 
 const Navigation = () => {
@@ -19,6 +19,13 @@ const Navigation = () => {
       </div>
       <div className="navigation-items">
         <Link 
+          to="/bonus"
+          className={`navigation-item ${isActive('/bonus') ? 'active' : ''}`}
+        >
+          <Gift size={20} />
+          <span>Bonus</span>
+        </Link>
+        <Link 
           to="/"
           className={`navigation-item ${isActive('/') ? 'active' : ''}`}
         >
@@ -31,6 +38,13 @@ const Navigation = () => {
         >
           <BarChart3 size={20} />
           <span>Analytics</span>
+        </Link>
+        <Link 
+          to="/split"
+          className={`navigation-item ${isActive('/split') ? 'active' : ''}`}
+        >
+          <Scissors size={20} />
+          <span>Split</span>
         </Link>
       </div>
     </nav>

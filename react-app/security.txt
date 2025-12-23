@@ -1,0 +1,718 @@
+Security_Code	Security_Name
+TATAELXSI	TATA ELXSI LTD
+LIQUIDETF	DSP Liquid ETF
+CASH	CASH
+HINDZINCNEW	Hindustan Zinc Limited
+INFOSYSTECH	Infosys Ltd
+RIL	Reliance Industries Ltd
+DIVISLAB	Divis Laboratories Ltd
+ASIANPAINTS	Asian Paints Ltd
+IEX	Indian Energy Exchange Ltd.
+JUBLFOOD	Jubilant Foodworks Limited
+TCS	Tata Consultancy Services Ltd
+PIIND	PI Industries Limited
+METROBRAND	Metro Brands Limited
+BASF	BASF India Ltd
+TECHMAHINDRA	Tech Mahindra Ltd
+PFIZER	PFIZER LIMIT
+ASTRAL1	Astral Ltd.
+BSE	BSE Limited
+PETERENGLAND	Aditya Birla Fashion and Retail Limited
+TATAGLOBAL	TATA Consumer Products Ltd
+KMBANK	Kotak Mahindra Bank Ltd
+LATENTVIEW	Latent View Analytics Ltd
+HINDALCO	Hindalco Industries Ltd
+UNITEDSPIRITS	United Spirits Ltd
+GODREJCP	Godrej Consumer Products Ltd
+BPCL	Bharat Petroleum Corporation Ltd
+ICICIPRULI	ICICI Prudential Life Insurance Company Ltd
+LICI	Life Insurance Corporation Of India
+ICICIGI	ICICI Lombard General Insurance Company Ltd
+SUPREMEIND	Supreme Industries Limited
+SAREGAMA	Saregama India Limited
+MMFIN	Mahindra & Mahindra Financial Services Limited
+MARUTI	Maruti Suzuki India Ltd
+ADITYABIRLA	Aditya Birla Capital Ltd
+MGL	Mahanagar Gas Limited
+PIDILITIND	Pidilite Industries Ltd.
+HUL	Hindustan Unilever Ltd
+ALKYLAMINE	Alkyl Amines Chemicals Limited
+DABUR	Dabur India Ltd
+HDFCBANK	HDFC Bank Ltd
+MUTHOOTFIN	Muthoot Finance Limited
+HDFCAMC	HDFC Asset Management Company Limited
+PRESTIGE	PRESTIGE ESTATES PROJECTS LTD
+CUB	City Union Bank Limited
+101884	Nippon India ETF Nifty 1D Rate Liquid BeES
+BAJAUTOFIN	Bajaj Finance Ltd
+LTI	LTIMindtree Ltd
+CDSL	Central Depository Services India Limited
+LTTS	L and T Technology Services Limited
+HCLTECH	HCL Technologies Limited
+HNGSNGBEES	Nippon India ETF Hang Seng BeES
+DMART	AVENUE SUPERMARTS LIMITED
+APLAPOLLO	APL Apollo Tubes
+FEDERALBNK	Federal Bank Ltd
+SBI	State Bank of India
+ALKEM	Alkem Laboratories Ltd
+106193	Kotak Gold ETF
+SIEMENS	SIEMENS LTD
+150440	Quant Large Cap Fund-Growth Option-Direct Plan
+UNIPHOS	UPL Ltd
+NMDC	NMDC LTD
+GLAND	Gland Pharma Limited
+AVANTIFEED	Avanti Feeds Limited
+BAJAJAUTO	Bajaj Auto Ltd
+AXISHCETF	Axis NIFTY Healthcare ETF
+UTIBANKETF	UTI Nifty Bank ETF
+DSPNEWETF	DSP Nifty 50 Equal Weight ETF
+ICICIBANKP	ICICI Prudential Nifty Private Bank ETF
+ICICITECH	ICICI Prudential Nifty IT ETF
+DSPQ50ETF	DSP Nifty Midcap 150 Quality 50 ETF
+ICICINF100	ICICI Prudential Nifty 100 ETF
+AXISTECETF	AXIS MUTUAL FUND-AXIS NIFTY IT ETF
+ABSLNN50ET	Aditya Birla Sun Life Nifty Next 50 ETF
+MANXT50	Mirae Asset Nifty Next 50 ETF
+ICICIALPLV	ICICI Prudential Nifty Alpha Low Volatility 30 ETF
+ICICIFMCG	ICICI Prudential Nifty FMCG ETF
+ICDSLTD	ICDS Ltd
+AXIS	Axis Bank Ltd
+HDFCLIFE	HDFC Standard Life Insurance Company Ltd
+RECLTD	REC Limited
+GAIL	GAIL India Ltd
+HAVELLS	Havells India Ltd
+JISLDVREQS	Jain Irrigation Systems Limited-DVR
+EMAMIINFRA	Emami Realty Ltd
+ICICI	ICICI Bank Ltd
+IPCALAB	Ipca Laboratories Limited
+JISLJALEQS	Jain Irrigation Systems Limited
+LSIL	Lloyds Engineering Works Ltd
+LT	Larsen and Toubro Ltd
+MRP	MANGALORE REFINERY & PETROCHEMICALS LTD
+NEPCMICON	NEPC INDIA LTD.
+NESTLEIND	Nestle India Ltd
+NOCIL	NOCIL LTD.
+NOVARTIND	NOVARTIS INDIA LTD
+ONGC	Oil and Natural Gas Corporation Limited
+PCS	PCS Technology Ltd
+PHILIPS	PHILIPS INDIA LTD.
+PHILIPSDOME	Philips Domestic Appliances India Ltd
+RCOM	RELIANCE COMMUNICATIONS L
+ROLTA	ROLTA INDIA LTD.
+SIGNIFY	Signify Innovations India Limited
+TATAMOTORS	Tata Motors Limited
+TATASTEEL	Tata Steel Ltd
+TRENT	Trent Ltd
+ULTRATECH	Ultratech Cement Ltd
+UNIVERSALOFF	Universal Office Automation Ltd
+ZUARI	ZUARI AGRO CHEMICALS LTD
+ZUARIGLOB	Zuari Industries Ltd
+DCW	DCW Ltd
+ACC	ACC Ltd
+ADANIPOWER	Adani Power Ltd
+BOB	Bank of Baroda
+BOMDYEING	Bombay Dyeing and Manufacturing Company Limited
+CANBK	Canara Bank
+CENTENKA	Century Enka Limited
+CIPLA	Cipla Ltd
+EMAMILTD	Emami Limited
+112938	Nippon India Credit Risk Fund-Growth Plan
+148258	Nippon India Credit Risk Fund-Segregated Portfolio 2-Growth Plan
+BRITANNIA	Britannia Industries Ltd.
+BRITANNIADEB	BRITANNIA INDUSTRIES LIMITED - 5.5 NCD 03JU24 FVRS29
+CADILAHC	Zydus Lifesciences Limited
+IBL	IDFC First Bank Limited
+INE733E07JW2	NTPC LIMITED SR-3B 7.62 BD 05OT35 FVRS1000
+RENUKA	SHREE RENUKA SUGARS LTD
+INE020B07JU4	RURAL ELECTRIFICATION CORPORATION LTD
+101161	Nippon India Multi Cap Fund-Growth Plan-Growth Option
+102594	ICICI PRUDENTIAL DISCOVERY FUND-GROWTH OPTION
+103340	ICICI Prudential Liquid Fund - Growth
+103360	Franklin India Smaller Companies Fund-Growth
+105758	HDFC MID-CAP OPPORTUNITIES FUND - GROWTH OPTION
+108466	ICICI PRUDENTIAL FOCUSED BLUECHIP EQUITY FUND - RETAIL GROWTH PLAN
+111803	Aditya Birla Sun Life Medium Term Plan-Growth-Regular Plan
+112277	Axis Bluechip Fund - Growth
+INDIACEM	INDIA CEMENTS LTD
+TDSACCOUNT	Tax Deducted at Source
+AMARAJABAT	Amara Raja Energy & Mobility Limited
+ICICIMOM30	ICICI Prudential Nifty 200 Momentum 30 ETF
+120676	ICICI Prudential Ultra Short Term Fund - Direct Plan -  Growth
+IRCTC	Indian Railway Catering And Tourism Corporation Limited
+ISEC	ICICI Securities Ltd
+SHREECEM	Shree Cement Limited
+WIPRO	WIPRO Ltd
+REDINGTON	Redington India Ltd.
+NMDCSTEEL	NMDC Steel Ltd
+BHARTI	Bharti Airtel Ltd
+GRASIM	Grasim Industries Ltd
+PERSISTENT	Persistent Systems Ltd
+VIPIND	VIP Industries Ltd
+BAJAJFINSV	BAJAJ FINSERV LTD
+SUMICHEM	Sumitomo Chemical India Limited
+MPHASIS	MPHASIS Ltd.
+SOLARINDS	SOLAR INDUSTRIES INDIA LTD
+HFCL	HFCL Limited
+POWERGRID	Power Grid Corporation Of India Limited
+CASTROL	CASTROL INDIA LTD
+BHEL	Bharat Heavy Electricals Ltd
+CREDITACC	CreditAccess Grameen Ltd
+ITC	ITC Ltd
+COALINDIA	Coal India Ltd.
+SBICARD	SBI Cards and Payment Services Limited
+RELAXO	Relaxo Footwears Limited
+IRFC	Indian Railway Finance Corporation Limited
+NIFTYBEES	Nippon India ETF Nifty 50 BeES
+DLF	DLF Limited
+COLPAL	COLGATE PALMOLIVE INDIA LTD
+MAESGETF	Mirae Asset Nifty 100 ESG Sector Leaders ETF
+ICICIPHARM	ICICI Prudential Nifty Healthcare ETF
+BHARATFORG	BHARAT FORGE LTD
+VINATIORGA	VINATI ORGANICS LTD
+SONACOMS	Sona BLW Precision Forgings Ltd
+DEEPAKNTR	Deepak Nitrite Ltd
+MAMFGETF	Mirae Asset Nifty India Manufacturing ETF
+149250	Edelweiss Nifty 50 Index Fund Direct Plan Growth
+148986	HDFC Banking & Financial Services Fund-Growth Option-Direct Plan
+LALPATHLAB	Dr Lal Pathlabs Ltd
+GNFC	Gujarat Narmada Valley Fertilizers and Chemicals Limited
+GOODYEAR	GOODYEAR INDIA LTD.
+INTERDATAMGMT	International Data Management Ltd
+PNB	Punjab National Bank
+SCHNEIDER	Schneider Electric Infrastructure Ltd
+AREVATD	GE Vernova T&D India Ltd
+149894	Axis Nifty Smallcap 50 Index Fund-Direct Plan-Growth Option
+FORTIS	FORTIS HEALTHCARE INDIA LIMITED
+TATACHEM	TATA CHEMICALS LTD.
+SBILIFE	SBI Life Insurance Company Limited
+141877	DSP Nifty 50 Equal Weight Index Fund-Direct Plan-Growth
+150428	DSP Nifty Midcap 150 Quality 50 Index Fund-Direct-Growth
+148703	UTI Nifty 200 Momentum 30 Index Fund - Direct Plan - Growth Option
+FAGBEARING	Schaeffler India Ltd
+INFRATEL	Indus Towers Ltd
+NTPC	NTPC LTD
+OBEROIRLTY	OBEROI REALTY LIMITED
+BALAMINES	Balaji Amines Ltd
+DSPGOLDETF	DSP Gold ETF
+133054	ICICI Prudential Equity Savings Fund - Direct - Growth
+143247	ICICI Prudential BSE 500 ETF
+GUJGASLTD	Gujarat Gas Limited
+VOLTAS	Voltas Limited
+MAFSETF	Mirae Asset Nifty Financial Services ETF
+MID150BEES	Nippon India ETF Nifty Midcap 150
+147921	ICICI Prudential Nifty Midcap 150 ETF
+MOMOMENTUM	Motilal Oswal Mutual Fund - Motilal Oswal Nifty 200 Momentum 30 ETF
+OTHERINCOME	Other Income
+120685	ICICI Prudential Regular Gold Savings Fund FOF - Direct Plan -  Growth
+149790	Mirae Asset Nifty India Manufacturing ETF FOF-Direct Plan-Growth
+ICICIGOLD	ICICI Prudential Gold ETF
+COROMANDEL	Coromandel International Ltd
+BIKAJI	Bikaji Foods International Ltd
+KPIT	Birlasoft Ltd
+150468	ICICI Prudential Nifty IT Index Fund-Direct Plan-Growth
+HEROHONDA	Hero Motocorp Ltd
+PETRONET	Petronet LNG Limited
+VBL	Varun Beverages Ltd
+PAGEIND	Page Industries Limited
+BERGEPAINT	Berger Paints India Limited
+HDFC	Housing Development Finance Corporation Ltd
+TATAMTRDVR	Tata Motors Ltd-DVR
+NAHARSPING	Nahar Spinning Mills Limited
+NAHARCAP	Nahar Capital and Financial Services Ltd
+JSWSTEEL	JSW Steel Limited
+GLAXO	GlaxoSmithKline Pharmaceuticals Ltd
+FMGOETZE	FEDERAL-MOGUL GOETZE LTD.
+BLISSGVS	Bliss GVS Pharma Ltd
+LUMAXIND	LUMAX INDUSTRIES LTD
+UNIONBANK	Union Bank Of India
+TCFC	TCFC Finance Ltd
+INE547G01019	LUMAX AUTOMOTIVE SYSTEMS LTD
+CPSEETF	GOLDMAN SACHS CPSE ETF
+151785	Axis Nifty IT Index Fund - Direct Plan - Growth
+150452	ICICI Prudential Nifty 200 Momentum 30 Index Fund - Direct Plan - Growth
+FINEORG	Fine Organic Industries Limited
+AMBUJACEM	Ambuja Cements Ltd
+149389	ICICI Prudential Nifty Midcap 150 Index Fund - Direct Plan - Growth
+TIMKEN	TIMKEN INDIA LTD.
+NAVINFLUOR	Navin Fluorine International Limited
+OIL	Oil India Limited
+M100	Motilal Oswal Nifty Midcap 100 ETF
+ICICINV20	ICICI Prudential Nifty50 Value 20 ETF
+MAHKTECH	Mirae Asset Hang Seng TECH ETF
+SUNPHARMA	SUN PHARMACEUTICAL INDUSTRIES LTD
+ZOMATO	Eternal Ltd
+TATAPOWER	Tata Power Company Ltd
+IOC	INDIAN OIL CORPORATION LTD
+GODREJPROP	Godrej Properties Limited
+INDHOTEL	INDIAN HOTELS COMPANY LIMITED
+GRINDWELL	Grindwell Norton Ltd
+SRF	SRF LTD
+EICHERMOT	Eicher Motors Ltd
+SASKEN	SASKEN COMMUNICATION TECHNOLOGIES LTD
+152067	Quant Teck Fund - Growth Option - Direct Plan
+HAPPSTMNDS	Happiest Minds Technologies Limited
+TORNTPOWER	Torrent Power Limited
+RAYMOND	Raymond Ltd
+PREMIER	PREMIER LTD
+MCDHOLDING	MCDOWELL HOLDINGS LTD.
+MAXIND	Max India Ltd
+MAX	Max Financial Services Limited
+HINDCOMPOS	Hindustan Composites Limited
+GUJALKALI	Gujarat Alkalies & Chemicals Ltd
+ARVINFRA	Arvind SmartSpaces Limited
+ARVIND	Arvind Ltd
+AKZOINDIA	Akzo Nobel India Limited
+ANVESHAN	Anup Engineering Ltd The
+ARVINDFASHION	Arvind Fashion Ltd.
+MAXHEALTH	Max Healthcare Institute Limited
+BARODARAYON	Baroda Rayon Corporation Limited
+PFC	Power Finance Corporation Limited
+RSIL	Jio Financial Services Ltd
+SUZLON	Suzlon Energy Ltd
+DELTACORP	Delta Corp Limited
+HPCL	Hindustan Petroleum Corporation Ltd
+IDFC	IDFC Ltd
+ADIRASAY	Genpharmasec Limited
+UJJIVANSFB	Ujjivan Small Finance Bank Ltd
+146381	DSP Nifty Next 50 Index Fund - Direct - Growth
+EIDPARRY	EID-Parry India Limited
+CRISIL	CRISIL LTD.
+BAJAJTEMPO	Force Motors Ltd
+MM	Mahindra and Mahindra Ltd
+INDIGO	InterGlobe Aviation Limited
+NYKAA	FSN E-Commerce Ventures Limited
+NAUKRI	Info Edge India Ltd
+MARICO	Marico Limited
+MUNDRAPORT	Adani Ports and Special Economic Zone Limited
+DEEPAKFERT	Deepak Fertilizers and Petrochemicals Corporation Ltd
+ASTEC	Astec LifeSciences Ltd
+RPOWER	Reliance Power Ltd
+RELINFRA	Reliance Infrastructure Ltd
+RELIANCEHOME	Reliance Home Finance Ltd
+RELCAPITAL	Reliance Capital Ltd
+NHPC	NHPC Ltd
+135813	Tata Resources & Energy Fund - Direct - Growth
+152039	Kotak S&P BSE Housing Index Fund - Direct Plan - Growth Option
+AIAENG	AIA ENGINEERING LTD
+IGL	Indraprastha Gas Limited
+ASHOKLEY	ASHOK LEYLAND LTD
+ESSARSHPNG	Essar Shipping Ltd
+BIRLACORPN	Birla Corporation Ltd
+DSPSILVETF	DSP Silver ETF
+KPRMILL	K.P.R. Mill Ltd
+MAZDOCK	Mazagon Dock Shipbuilders Ltd
+BAJAJHLDNG	BAJAJ HOLDINGS and INVESTMENT LTD
+BAYERCROP	Bayer Cropscience Ltd
+CENTURYTEX	Aditya Birla Real Estate Ltd
+DRREDDYS	Dr ReddyS Laboratories Ltd
+EIHOTEL	EIH LIMITED
+GESHIP	The Great Eastern Shipping Company Limited
+GLENMARK	Glenmark Pharma Ltd
+GODREJIND	Godrej Industries Limited
+HEMIPROP	Hemisphere Properties India Ltd
+JINDALSTEEL	Jindal Steel & Power Limited
+MAHLIFE	Mahindra Lifespace Developers Ltd
+ORACLEFSS	Oracle Financial Services Software Ltd
+PGHH	PROCTER & GAMBLE HYGIENE & HEALTH CARE LTD
+PTC	PTC India Ltd
+QUESS	Quess Corp Ltd
+SESAGOA	Vedanta Limited
+SFHL	Sundaram Finance Holdings Limited
+SUNDARMFIN	Sundaram Finance Limited
+TATACOM	Tata Communications Ltd
+THERMAX	THERMAX LTD
+TITAN	TITAN COMPANY LIMITED
+UBL	UNITED BREWERIES LTD
+WOCKHARDT	Wockhardt Ltd
+105463	UTI GOLD EXCHANGE TRADED FUND
+ABB	ABB India Ltd
+ABBPOWER	Hitachi Energy India Limited
+ADANIENT	Adani Enterprises Limited
+ADANIGREEN	Adani Green Energy Limited
+ADANITRANS	Adani Energy Solutions Limited
+AGL	Adani Total Gas Limited
+CAMS	Computer Age Management Services Limited
+HINDCOPPER	Hindustan Copper Limited
+KNRCON	KNR CONSTRUCTIONS LIMITED
+SAIL	STEEL AUTHORITY OF INDIA
+SFL	Sheela Foam Limited
+LXCHEM	LAXMI ORGANIC INDUSTRIES LIMITED
+AARTIIND	Aarti Industries Ltd
+PAYTM	One 97 Communications Limited
+DATAPATTNS	Data Patterns INDIA Limited
+CHOLAFIN	Cholamandalam Investment and Finance Company Ltd
+FINCABLES	Finolex Cables Limited
+GODREJAGRO	Godrej Agrovet Limited
+BOSCHLTD	BOSCH Ltd
+AUBANK	AU Small Finance Bank Ltd
+OLECTRA	Olectra Greentech Limited
+ACI	Archean Chemical Industries Ltd
+ALLCARGO	Allcargo Logistics Limited
+KRBL	KRBL Ltd
+118837	Mirae Asset Great Consumer Fund - Direct - Growth
+ABBOTINDIA	Abbott India Ltd
+CARBORUNIV	CARBORUNDUM UNIVERSAL LTD
+SUNDRMFAST	Sundram Fasteners Limited
+WHIRLPOOL	Whirlpool Of India Ltd
+149787	Mirae Asset Nifty India Manufacturing ETF FOF - Direct Plan- IDCW
+CLEAN	Clean Science and Technology Ltd
+ZYDUSWELL	Zydus Wellness Ltd
+152243	DSP Nifty Smallcap250 Quality 50 Index Fund-Direct-Growth
+BATAINDIA	Bata India Ltd
+GMDCLTD	Gujarat Mineral Development Corporation Limited
+APOLLOHOSP	APOLLO HOSPITALS ENTERPRISES LTD
+AWL	AWL Agri Business Ltd
+SRTRANSFIN	Shriram Finance Ltd
+BEL	Bharat Electronics Ltd
+TVSMOTOR	TVS Motor Company Ltd
+HAL	Hindustan Aeronautics Limited
+INDUSINDBK	IndusInd Bank Limited
+UTIAMC	UTI Asset Management Company Ltd
+120492	JM Flexicap Fund - Direct - Growth
+CONCOR	Container Corporation of India Limited
+VTL	Vardhman Textiles Ltd
+SUMMITSEC	SUMMIT SECURITIES LTD
+SKFINDIA	SKF India Limited
+SITICABLE	Siti Networks Ltd
+PENINLAND	Peninsula Land Ltd
+MEGASOFT	Megasoft Ltd
+KAYA	Kaya Ltd
+JPPOWER	Jaiprakash Power Ventures Ltd
+IBN18	TV18 Broadcast Ltd
+HEXATRADEX	Hexa Tradex Ltd
+CENTURYPLY	Century Plyboards India Limited
+DNAMEDIA	Diligent Media Corporation Ltd
+GTLINFRA	GTL Infrastructure Ltd
+TINPLATE	Tinplate Company of India Ltd
+GMMPFAUDLER	GMM Pfaudler Limited
+AEGISCHEM	Aegis Logistics Ltd
+JUSTDIAL	Just Dial Ltd
+CHAMBLFERT	Chambal Fertilizers and Chemicals Ltd
+MIDHANI	Mishra Dhatu Nigam Limited
+INF0R8F01018	Zerodha Nifty LargeMidcap 250 Index Fund - Direct Plan - Growth option
+149858	ICICI Prudential Nifty Bank Index Fund - Direct Plan Growth
+151791	Quant BFSI Fund - Growth Option - Direct Plan
+122639	Parag Parikh Flexi Cap Fund - Direct - Growth
+102756	SBI FOCUSED EQUITY FUND - REGULAR PLAN -GROWTH
+119775	Kotak Emerging Equity Scheme - Growth - Direct
+150539	ICICI Prudential PSU Equity Fund - Direct Plan - Growth
+118989	HDFC MID CAP OPPORTUNITIES FUND -DIRECT PLAN - GROWTH OPTION
+130503	HDFC Small Cap Fund - Direct Growth Plan
+MOTHERSUMI	Samvardhana Motherson International Limited
+NATIONALUM	NATIONAL ALUMINIUM COMPANY LTD
+TORNTPHARM	TORRENT PHARMACEUTICALS LIMITED
+151911	Kotak Nifty Financial Services Ex-Bank Index Fund - Direct Plan - Growth
+ALMONDZ	Almondz Global Securities Ltd
+UNITECH	UNITECH LTD
+APOLLOTYRE	Apollo Tyres Limited
+BOC	Linde India Ltd
+JBCHEPHARM	JB Chemicals & Pharmaceuticals Limited
+KEC	KEC International Limited
+RCF	Rashtriya Chemicals and Fertilizers Limited
+BAJAJHIND	BAJAJ HINDUSTHAN SUGAR LTD
+119727	SBI Focused Equity Fund - Direct - Growth
+119028	DSP Natural Resources and New Energy Fund - Direct Plan - Growth
+MEDHEASP	MedPlus Health Services Limited
+HEG	HEG Ltd
+NCC	NCC Ltd
+CCL	CCL PRODUCTS INDIA LTD.
+TATATECH	Tata Technologies Ltd
+MANS2MQ1E_SC	Mirae Asset Nifty Smallcap 250 Momentum Quality 100 ETF
+ORIENTCONT	Oricon Enterprises Limited
+RAIN	Rain Industries Limited
+148574	Mirae Asset ESG Sector Leaders Fund of Fund Direct Growth
+AUROPHARMA	Aurobindo Pharma Limited
+BEML	BEML LIMITED
+ORISSAMINE	THE ORISSA MINERALS DEVELOPMENT CO. LTD
+BALRAMCHIN	Balrampur Chini Mills Ltd
+IDEA	Vodafone Idea Limited
+POLYMED	Poly Medicure Ltd
+ASAHIINDIA	Asahi India Glass Limited
+PIRHEALTH	Piramal Enterprises Ltd
+DSPNIFTY50ADD	DSP Nifty 50 ETF
+148925	quant Quantamental Fund - Growth Option - Direct Plan
+148564	quant ESG Equity Fund - Growth Option - Direct Plan
+PSUBNKBEES	Nippon India ETF Nifty PSU Bank BeES
+YESBANK	Yes Bank Limited
+IBULHSGFIN	Sammaan Capital Ltd
+BIOCON	BIOCON LTD
+HUDCO	Housing & Urban Development Corporation Limited
+AMBER	Amber Enterprises India Limited
+KSBPUMPS	KSB Ltd
+HONAUT	Honeywell Automation India Limited
+JHS	JHS Svendgaard Laboratories Ltd
+JAICORPLTD	Jai Corp Ltd
+JITFINFRA	JITF Infralogistics Ltd
+JPASSOCIATES	Jaiprakash Associates Ltd
+MOREPENLAB	MOREPEN LABORATORIES LTD
+JYOTISTRUC	Jyoti Structures Ltd
+KAUSHALYA	Kaushalya Infrastructure Development Corporation Ltd
+MODISON	Modison Ltd
+MTNL	Mahanagar Telephone Nigam Ltd
+MUKANDLTD	MUKAND LTD
+NAGARFERT	Nagarjuna Fertilizers and Chemicals Ltd
+NETWORK18	Network18 Media & Investments Ltd
+ONMOBILE	Onmobile Global Limited
+PANTALOONR	Future Enterprises Limited
+PARSVNATH	Parsvnath Developers Ltd
+PHRL	Praxis Home Retail Ltd
+PRETAILDVR	Future Enterprises Ltd-DVR
+PSB	PUNJAB AND SIND BANK
+SAURASHCEM	Saurashtra Cement Ltd
+SCI	Shipping Corporation Of India Limited
+SHARRESLTD	Crest Ventures Ltd
+SJVN	SJVN Limited
+SSWL	Steel Strips Wheels Limited
+SUNFLAG	Sunflag Iron & Steel Company Ltd
+SURANATP	Surana Telecom and Power Ltd
+UCOBANK	Uco Bank
+105085	Nippon India ETF Gold BeES
+ABAN	Aban Offshore Ltd
+ACKRUTI	Hubtown Ltd
+AKSHOPTFBR	Aksh Optifibre Ltd
+ALEMBICLTD	ALEMBIC LTD
+ASTRAMICRO	Astra Microwave Products Limited
+BHAGYANGR	Bhagyanagar India Ltd
+BINANIIND	Bil Vyapar Ltd
+ESTER	ESTER INDUSTRIES LTD
+FINANTECH	63 Moons Technologies Ltd
+FLFL	Future Lifestyle Fashions Limited
+FMNL	Future Market Networks Ltd
+FRETAIL	Future Retail Ltd
+FSL	Firstsource Solutions Limited
+GMRINFRA	GMR Airports Ltd
+HMT	HMT Limited
+HSIL	Agi Greenpac Limited
+IMFA	Indian Metals & Ferro Alloys Limited
+INE733E07JP6	8.49% NTPC DB 25-03-2025
+IVC	IL&FS Investment Managers Ltd
+JINDALSAW	Jindal Saw Ltd
+INE053F07538	8.10% INDIAN RAILWAY FINANCE CORPORATION LIMITED
+GMRPUI	GMR Power and Urban Infra Ltd
+SHICOROL	Shipping Corporation of India Land and Assets Ltd
+SHIL	Hindware Home Innovation Ltd
+150737	HDFC Silver ETF Fund of Fund - Growth Option - Direct Plan
+NIITTECH	Coforge Ltd
+ESSELPACK	ESSEL PROPACK LIMITED
+AUTOIETF	ICICI Prudential Nifty Auto ETF
+BDL	Bharat Dynamics Ltd
+KAJARIACER	Kajaria Ceramics Ltd.
+SUNTV	Sun TV Network Limited
+EXIDEIND	Exide Industries Limited
+DIGIDRIVE	Digidrive Distributors Ltd
+PNBHOUSING	PNB Housing Finance Limited
+150643	ICICI Prudential Nifty Auto Index Fund - Direct Plan - Growth
+145454	DSP Healthcare Fund - Direct - Growth
+152645	Mirae Asset Nifty MidSmallcap400 Momentum Quality 100 ETF Fund of Fund - Direct Plan - Growth
+TUBEINVEST	TUBE INVESTMENTS OF INDIA LIMITED
+AFFLE	Affle 3i Ltd
+JKLAKSHMI	JK Lakshmi Cement Limited
+IFCI	IFCI Limited
+134008	SBI Nifty Bank ETF
+JUNIORBEES	Nippon India ETF Nifty Next 50 Junior BeES
+BANKBEES	Nippon India ETF Nifty Bank BeES
+ZODIACLOTH	Zodiac Clothing Company Ltd
+150619	HDFC NIFTY 50 VALUE 20 ETF - Growth Option
+AARTIDRUGS	Aarti Drugs Ltd
+149254	Edelweiss Nifty 100 Quality 30 Index Fund Direct Plan Growth
+150636	BANDHAN NIFTY100 LOW VOLATILITY 30 INDEX FUND - GROWTH - DIRECT PLAN
+152365	ICICI Prudential Nifty50 Value 20 Index Fund - Direct Plan - Growth
+149804	Navi Nifty Bank Index Fund- Direct Plan- Growth
+INDIANHUME	Indian Hume Pipe Company Limited
+MANMMQ1ESC	Mirae Asset Nifty MSC400 Momentum Quality 100 ETF
+SWSOLAR	Sterling and Wilson Renewable Energy Ltd
+PARPHOSP	Paradeep Phosphates Limited
+BLS	BLS International Services Limited
+ECLERX	ECLERX SERVICES LIMITED
+BAJAJCORP	Bajaj Consumer Care Ltd
+PPL	Piramal Pharma Ltd
+118364	BANDHAN LIQUID Fund -Direct Plan-Growth
+119125	DSP Liquidity Fund - Direct - Growth
+119164	Navi Liquid Fund-Direct Plan-Growth Option
+120197	ICICI Prudential Liquid Fund - Direct Plan - Growth
+USHAMART	Usha Martin Limited
+148721	Nippon India Nifty 50 Value 20 Index Fund - Direct Plan - Growth Option
+149039	Navi Nifty 50 Index Fund-Direct Plan-Growth
+149447	Navi Nifty Next 50 Index Fund- Direct Plan- Growth
+149800	Motilal Oswal Nifty 200 Momentum 30 Index Fund-Direct Plan
+150487	Nippon India Nifty Alpha Low Volatility 30 Index Fund - Direct Plan - Growth Option
+150639	ICICI Prudential Nifty50 Equal Weight Index Fund- Direct Plan - Growth
+118701	Nippon India Liquid Fund - Direct Plan Growth Plan - Growth Option
+145834	Motilal Oswal Liquid Fund - Direct - Growth
+JTLIND	Jtl Industries Ltd
+TI	Tilaknagar Industries Ltd
+ASTRAZEN	ASTRAZENECA PHARMA INDIA LIMITED
+CHALET	Chalet Hotels Limited
+CEBBCO	Jupiter Wagons Ltd
+JKCEMENT	JK Cement Ltd
+ENDURANCE	Endurance Technologies Limited
+INDIGOPNTS	Indigo Paints Limited
+VRLLOG	VRL Logistics Ltd
+FCL	Fineotex Chemical Ltd
+SOBHA	Sobha Ltd
+ACE	ACTION CONST EQUIP LTD
+JHSSVERV	JHS Svendgaard Retail Ventures Ltd
+RAMCOCEM	The Ramco Cements Ltd
+HNS2E_SC	HDFC NIFTY Smallcap 250 ETF
+KEI	KEI Industries Limited
+JSWENERGY	JSW ENERGY LTD
+LODHA	Lodha Developers Ltd
+GRSE	Garden Reach Shipbuilders & Engineers Limited
+DNPBE01_SC	DSP Nifty PSU Bank ETF
+KIMS	Krishna Institute of Medical Sciences Ltd
+119732	SBI PSU Fund - Direct - Growth
+DIAMONDYD	Prataap Snacks Limited
+MANBE_SC	Mirae Asset Nifty Bank ETF
+120587	ICICI Prudential FMCG - Direct -  Growth
+COCHINSHIP	Cochin Shipyard Limited
+CYIENT	Cyient Limited
+120828	Quant Small Cap Fund - Direct - Growth
+RKFORGE	RAMKRISHNA FORGINGS LTD
+152990	Bandhan Nifty 500 Value 50 Index Fund Direct Plan - Growth
+BIRLAERIC	Birla Cable Ltd
+FINPIPE	FINOLEX INDUSTRIES LTD
+GARWARPOLY	Garware Hi-Tech Films Ltd
+HDFCMFGETF	HDFC Gold Exchange Traded Fund
+IDBI	IDBI BANK LIMITED
+KSCL	Kaveri Seed Company Limited
+REDPROTE	Yash Innoventures Ltd
+SHAKTIPUMP	Shakti Pumps India Ltd
+VESUVIUS	Vesuvius India Ltd
+BAJAJELEC	Bajaj Electricals Limited
+ATV	ATV Projects India Ltd
+BAJELPROJECTS	Bajel Projects Ltd
+TWL	Titagarh Rail Systems Limited
+RVNL	Rail Vikas Nigam Limited
+NOVAIRON	Nova Iron & Steel Ltd
+TVSELECT	TVS Electronics Ltd
+STAR	Strides Pharma Science Ltd
+FGPIND	FGP Limited
+EDELWEISS	Edelweiss Financial Services Limited
+NWML	Nuvama Wealth Management Ltd
+RAILTEL	Railtel Corporation Of India Limited
+148822	ICICI Prudential Nifty 100 Low Volatility 30 ETF FOF - Direct Plan - Growth
+IPNONGE_SC	ICICI Prudential Nifty Oil and Gas ETF
+NIITLTD	NIIT Ltd
+SUVEN	Suven Life Sciences Ltd
+ITCHOTLTD	ITC Hotels Ltd
+IPNME_SC	ICICI Prudential Nifty Metal ETF
+MAN2A3E_SC	Mirae Asset Nifty 200 Alpha 30 ETF
+MANENNAAE_SC	Mirae Asset Nifty EV and New Age Automotive ETF
+CROMPTON	CG Power and Industrial Solutions Ltd
+HYUMOTOR	Hyundai Motor India Ltd
+SWIGGY	Swiggy Ltd
+BAJHOUFI	Bajaj Housing Finance Ltd
+PRAJIND	Praj Industries Limited
+MEDANTA	Global Health Ltd
+APL	Aarti Pharmalabs Ltd
+149868	HDFC NIFTY 100 Index Fund - Direct Plan - Growth Option
+RELIGARE	RELIGARE ENTERPRISES LTD
+PREMIERENE	Premier Energies Ltd
+PHOENIXLTD	The Phoenix Mills Ltd
+ONESOURCE	OneSource Specialty Pharma Ltd
+WAAENERG	Waaree Energies Ltd
+ANGELBRKG	Angel One Limited
+APARINDS	Apar Industries Limited
+EMUDHRA	eMudhra Ltd
+FINOPB	Fino Payments Bank Limited
+FLUOROCHEM	Gujarat Fluorochemicals Limited
+INOXWIND	Inox Wind Limited
+KALYANKJIL	Kalyan Jewellers India Limited
+KAYNES	Kaynes Technology India Ltd
+MCX	MULTI COMMODITY EXCHANGE OF INDIA LTD.
+119091	HDFC Liquid Fund Direct Plan Growth Option
+VMART	V-MART RETAIL LTD
+PDSMFL	PDS Ltd
+NEWGEN	Newgen Software Technologies Limited
+JMFINANCIL	JM FINANCIAL LTD
+KRSNAA	Krsnaa Diagnostics Limited
+NSDEOVI1	Protean Egov Technologies Ltd
+CAMLINFINE	Camlin Fine Sciences Ltd
+UPSERVI	Updater Services Limited
+152718	Mirae Asset Nifty200 Alpha 30 ETF Fund of Fund - Direct Plan - Growth
+152459	Mirae Asset Nifty Smallcap 250 Momentum Quality 100 ETF Fund of Fund - Direct Plan - Growth
+ZAGPREOS	Zaggle Prepaid Ocean Services Ltd
+149283	ICICI Prudential Nifty Smallcap 250 Index Fund - Direct Plan - Growth
+SOUWESPE	South West Pinnacle Exploration Ltd
+SIEMENSENERGY	Siemens Energy India Ltd
+TRITURBINE	TRIVENI TURBINE LTD
+SUNTECK	SUNTECK REALTY LTD
+INF194KB1HA2	Bandhan Nifty Alpha 50 Index Fund - Direct Plan - Growth
+DSBLRE_SC	DSP BSE Liquid Rate ETF
+HBLPOWER	HBL Engineering Ltd
+INF204KB15W0	Nippon India Nifty Smallcap 250 Index Fund
+XPROINDIA	XPRO INDIA LTD
+PPAP	PPAP Automotive Ltd
+149892	Navi Nifty Midcap 150 Index Fund Direct Plan- Growth
+147623	Motilal Oswal Nifty Smallcap 250 Index Fund - Direct - Growth
+120620	ICICI Prudential Nifty Index Fund - Direct Plan Cumulative Option
+BLUESTARCO	Blue Star Limited
+GRAPHITE	GRAPHITE INDIA LTD.
+INVKNOSO	Inventurus Knowledge Solutions Ltd
+HIL	Birlanu Ltd
+IRMENERG	IRM Energy Limited
+BANDHANBANK	Bandhan Bank Ltd
+NTPGREEN	NTPC Green Energy Ltd
+SAGILITY	Sagility Ltd
+CONBIOTE	Concord Biotech Ltd
+KANSAINER	Kansai Nerolac Paints Ltd
+POLICYBZR	PB Fintech Limited
+CAPLIPOINT	Caplin Point Laboratories Limited
+ITDCEM	Cemindia Projects Ltd
+PVR	PVR INOX Limited
+CEIGALL	Ceigall India Limited
+GRAVITA	Gravita India Limited
+MOIL	MOIL LTD
+THOMASCOOK	Thomas Cook India Ltd
+STYLAMIND	Stylam Industries Ltd
+SYMPHONY	Symphony Ltd.
+VENPIPTU	Venus Pipes & Tubes Ltd
+MARKSANS	MARKSANS PHARMA LTD
+HNNIDG	HDFC NIFTY Next50 Index Fund Direct Growth
+CHEMPLAST	Chemplast Sanmar Ltd
+ALLSEC	Alldigi Tech Ltd
+AMRUTANJAN	AMRUTANJAN
+INOWINIS	Inox Green Energy Services Ltd
+RPPIPROJ	RPP Infra Projects Ltd
+KPITTECH	KPIT Technologies Limited
+WHEELS	WHEELS INDIA LTD.
+DEVYANI	DEVYANI INTERNATIONAL LIMITED
+KIOCL	KIOCL Limited
+SOUTHBANK	THE SOUTH INDIAN BANK LIMITED
+MMTC	MMTC Ltd
+PVP	PVP Ventures Ltd
+PARAGMILK	Parag Milk Foods Ltd
+IRB	IRB Infrastructure Developers Limited
+IBSEC	Dhani Services Limited
+UTKSMAFB	Utkarsh Small Finance Bank Ltd
+JINDRILL	Jindal Drilling & Industries Limited
+ZEEL	Zee Entertainment Enterprises Limited
+DCXINDIA	DCX Systems Ltd
+INDIAINFO	IIFL Finance Ltd
+SHRPROP1	Shriram Properties Ltd
+QUELABOR	Quest Laboratories Ltd
+INDEMULSIFIER	Indian Emulsifiers Ltd
+BOI	BANK OF INDIA
+TRIL	Transformers and Rectifiers India Ltd
+SPASPHFI	Spandana Sphoorty Financial Ltd
+JYOTHYLAB	JYOTHY LABORATORIES LTD
+HCC	Hindustan Construction Company Ltd
+147794	Motilal Oswal Nifty 50 Index FundMOFNIFTY50 - Direct - Growth
+ANV5E_SC	Axis Nifty500 Value 50 ETF
+TVSMOTORNCPRS	TVS Motor Company Ltd - 6% NCRPS
+KTKBANK	KARNATAKA BANK LTD
+GREAVESCOT	GREAVES COTTON LTD.
+KIRLOSBROS	Kirloskar Brothers Ltd
+JUBIINGRE	Jubilant Ingrevia Limited
+CGCEL	Crompton Greaves Consumer Electrical Ltd
+152855	Bandhan Nifty Midcap 150 Index Fund-Direct Plan-Growth
+149832	BANDHAN NIFTY 100 INDEX FUND - DIRECT PLAN - GROWTH
+150591	BANDHAN NIFTY200 MOMENTUM 30 INDEX FUND - GROWTH - DIRECT PLAN
+147622	Motilal Oswal Nifty Midcap 150 Index Fund - Direct - Growth
+GATI	Allcargo Gati Ltd
+153838	Bandhan BSE India Sector Leaders Index Fund - Direct Plan - Growth
+152716	Bandhan Nifty Total Market Index Fund - Direct Plan - Growth
+MAHILOG	Mahindra Logistics Ltd
+NESCO	Nesco Ltd
+SWASUITI	Swaraj Suiting Ltd
+CLEDUCAT	CL Educate Ltd

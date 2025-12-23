@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { tradesAPI } from '../services/api';
 import StatCard from '../components/StatCard';
 import Charts from '../components/Charts';
@@ -6,17 +6,67 @@ import FilterBar from '../components/FilterBar';
 import TradesTable from '../components/TradesTable';
 import ImportButton from '../components/ImportButton';
 import UploadProgressBanner from '../components/UploadProgressBanner';
-import { TrendingUp, DollarSign, Activity, BarChart3 } from 'lucide-react';
+import { TrendingUp, DollarSign, Activity, BarChart3, Gift, Loader } from 'lucide-react';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({});
   const [stocks, setStocks] = useState([]);
   const [exchanges, setExchanges] = useState([]);
   const [transactionTypes, setTransactionTypes] = useState([]);
-  const [clientIds, setClientIds] = useState([]);
+  const [accountCodes, setAccountCodes] = useState([]);
+  const [accountCodeToClientId, setAccountCodeToClientId] = useState({}); // Cache for account code -> client ID mapping
   const [filters, setFilters] = useState({});
+  
+  // Handle filter change with Account Code to Client ID resolution
+  const handleFilterChange = async (newFilters) => {
+    // If accountCode is being set, resolve Client ID
+    if (newFilters.accountCode !== undefined && newFilters.accountCode !== filters.accountCode) {
+      const accountCode = newFilters.accountCode;
+      
+      if (!accountCode) {
+        // Account code cleared, clear client ID too
+        setFilters({ ...newFilters, customerId: undefined, accountCode: undefined });
+        return;
+      }
+      
+      // Check cache first
+      let clientId = accountCodeToClientId[accountCode];
+      
+      if (!clientId) {
+        // Fetch client ID from account code
+        try {
+          console.log(`[Dashboard] Resolving client ID for account code: ${accountCode}`);
+          const clientIdRes = await tradesAPI.getClientIdByAccountCode(accountCode);
+          clientId = clientIdRes?.data?.clientId;
+          
+          if (clientId) {
+            // Cache the mapping
+            setAccountCodeToClientId(prev => ({
+              ...prev,
+              [accountCode]: clientId
+            }));
+            console.log(`[Dashboard] Resolved client ID ${clientId} for account code ${accountCode}`);
+          }
+        } catch (error) {
+          console.error(`[Dashboard] Error resolving client ID for account code ${accountCode}:`, error);
+        }
+      }
+      
+      // Update filters with resolved client ID
+      setFilters({ 
+        ...newFilters, 
+        customerId: clientId || undefined,
+        accountCode: accountCode
+      });
+    } else {
+      // No account code change, just update filters normally
+      setFilters(newFilters);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [uploadProgress, setUploadProgress] = useState(null);
+  const [isUploadingBonus, setIsUploadingBonus] = useState(false);
+  const bonusFileInputRef = useRef(null);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -104,16 +154,16 @@ const Dashboard = () => {
 
   const fetchFilterOptions = async () => {
     try {
-      const [stocksRes, exchangesRes, transactionTypesRes, clientIdsRes] = await Promise.all([
+      const [stocksRes, exchangesRes, transactionTypesRes, accountCodesRes] = await Promise.all([
         tradesAPI.getStocks(),
         tradesAPI.getExchanges(),
         tradesAPI.getTransactionTypes(),
-        tradesAPI.getClientIds()
+        tradesAPI.getAccountCodes()
       ]);
       setStocks(stocksRes.data.data || []);
       setExchanges(exchangesRes.data.data || []);
       setTransactionTypes(transactionTypesRes.data.data || []);
-      setClientIds(clientIdsRes.data.data || []);
+      setAccountCodes(accountCodesRes.data.data || []);
     } catch (error) {
       console.error('Error fetching filter options:', error);
     }
@@ -123,6 +173,102 @@ const Dashboard = () => {
     setLoading(true);
     await Promise.all([fetchStats(), fetchFilterOptions()]);
     setLoading(false);
+  };
+
+  const handleBonusFileSelect = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Validate file type (Excel only for bonuses)
+    const isExcel = (
+      file.name.endsWith('.xlsx') ||
+      file.name.endsWith('.xls') ||
+      file.name.endsWith('.xlsb') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.type === 'application/vnd.ms-excel' ||
+      file.type === 'application/vnd.ms-excel.sheet.binary.macroEnabled.12'
+    );
+
+    if (!isExcel) {
+      alert('Please select a valid Excel file (.xlsx, .xls, .xlsb)');
+      return;
+    }
+
+    // Validate file size (200MB limit)
+    if (file.size > 200 * 1024 * 1024) {
+      alert('File size must be less than 200MB');
+      return;
+    }
+
+    await uploadBonusFile(file);
+  };
+
+  const uploadBonusFile = async (file) => {
+    setIsUploadingBonus(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await tradesAPI.importBonus(formData);
+
+      if (response.data.success) {
+        // Start polling for progress
+        const importId = response.data.importId;
+        if (importId) {
+          const progressInterval = setInterval(async () => {
+            try {
+              const progressResponse = await tradesAPI.getImportProgress(importId);
+              if (progressResponse.data.success) {
+                const progressData = progressResponse.data.progress;
+                setUploadProgress(progressData);
+                
+                // Stop polling if completed or error
+                if (progressData.stage === 'completed' || progressData.stage === 'error') {
+                  clearInterval(progressInterval);
+                  setIsUploadingBonus(false);
+                  // Clear progress after 2 seconds
+                  setTimeout(() => {
+                    setUploadProgress(null);
+                  }, 2000);
+                  
+                  // Refresh data on success
+                  if (progressData.stage === 'completed') {
+                    await handleImportSuccess();
+                  }
+                }
+              }
+            } catch (err) {
+              console.log('Progress polling error (ignored):', err.message);
+            }
+          }, 500); // Poll every 500ms
+
+          // Initialize progress immediately
+          setUploadProgress({
+            stage: 'uploading',
+            progress: 5,
+            message: 'File uploaded, starting bonus import...',
+            totalRows: 0,
+            processedRows: 0,
+            imported: 0,
+            errors: 0
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Bonus upload error:', error);
+      alert(error.response?.data?.error || error.message || 'Failed to upload bonus file');
+      setIsUploadingBonus(false);
+    } finally {
+      // Reset file input
+      if (bonusFileInputRef.current) {
+        bonusFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleBonusButtonClick = () => {
+    bonusFileInputRef.current?.click();
   };
 
   const formatCurrency = (value) => {
@@ -156,10 +302,36 @@ const Dashboard = () => {
             <p className="header-subtitle">Real-time stock trading analytics and insights</p>
           </div>
           <div className="header-right">
-            <ImportButton 
-              onImportSuccess={handleImportSuccess}
-              onProgressUpdate={setUploadProgress}
-            />
+            <div className="header-buttons">
+              <ImportButton 
+                onImportSuccess={handleImportSuccess}
+                onProgressUpdate={setUploadProgress}
+              />
+              <input
+                ref={bonusFileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.xlsb,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.ms-excel.sheet.binary.macroEnabled.12"
+                onChange={handleBonusFileSelect}
+                style={{ display: 'none' }}
+              />
+              <button 
+                className="upload-bonuses-button"
+                onClick={handleBonusButtonClick}
+                disabled={isUploadingBonus}
+              >
+                {isUploadingBonus ? (
+                  <>
+                    <Loader className="spinning" size={20} />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <Gift size={20} />
+                    <span>Upload Bonuses</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -215,11 +387,11 @@ const Dashboard = () => {
             {/* Filters */}
             <FilterBar 
               filters={filters} 
-              onFilterChange={setFilters} 
+              onFilterChange={handleFilterChange} 
               stocks={stocks}
               exchanges={exchanges}
               transactionTypes={transactionTypes}
-              clientIds={clientIds}
+              accountCodes={accountCodes}
             />
 
             {/* Trades Table */}

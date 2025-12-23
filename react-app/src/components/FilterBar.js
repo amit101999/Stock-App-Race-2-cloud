@@ -3,7 +3,7 @@ import { Filter, X } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
 import './FilterBar.css';
 
-const FilterBar = ({ filters, onFilterChange, stocks = [], exchanges = [], transactionTypes = [], clientIds = [] }) => {
+const FilterBar = ({ filters, onFilterChange, stocks = [], exchanges = [], transactionTypes = [], accountCodes = [] }) => {
   const handleFilterChange = (key, value) => {
     onFilterChange({ ...filters, [key]: value || undefined });
   };
@@ -73,15 +73,15 @@ const FilterBar = ({ filters, onFilterChange, stocks = [], exchanges = [], trans
 
         <div className="filter-group">
           <SearchableSelect
-            id="filter-client-id"
-            label="Client ID"
-            value={filters.customerId || ''}
-            onChange={(value) => handleFilterChange('customerId', value)}
-            options={clientIds}
-            placeholder="All Clients"
-            searchPlaceholder="Search client ID..."
+            id="filter-account-code"
+            label="Account Code"
+            value={filters.accountCode || ''}
+            onChange={(value) => handleFilterChange('accountCode', value)}
+            options={accountCodes}
+            placeholder="All Account Codes"
+            searchPlaceholder="Search account code..."
             description=""
-            countText={clientIds.length > 0 ? `${clientIds.length} clients available` : 'No clients found'}
+            countText={accountCodes.length > 0 ? `${accountCodes.length} account codes available` : 'No account codes found'}
           />
         </div>
 

@@ -110,25 +110,54 @@ function fifoProcess(transactions) {
     const type = String(t.tranType || "")
       .toUpperCase()
       .trim();
-    const qty = Number(t.qty) || 0;
-    const value = Number(t.netAmount) || 0;
-    if (!qty || qty <= 0) continue;
+    let qty = Number(t.qty) || 0;
+    let value = Number(t.netAmount) || 0;
+    
+    // Skip transactions with zero quantity
+    if (qty === 0) continue;
+    
+    // Determine if this is a buy or sell transaction
+    // Priority: Transaction type > Quantity sign
+    let isBuy = false;
+    let isSell = false;
+    
+    if (type.startsWith("B")) {
+      isBuy = true;
+    } else if (type.startsWith("S")) {
+      isSell = true;
+    } else if (qty < 0) {
+      // Negative quantity typically means sell
+      isSell = true;
+    } else if (qty > 0) {
+      // Positive quantity with unknown type, assume buy
+      isBuy = true;
+    }
+    
+    // Skip if we can't determine transaction type
+    if (!isBuy && !isSell) {
+      console.warn(`[fifoProcess] Unknown transaction type: ${type}, qty: ${qty}, skipping`);
+      continue;
+    }
+    
+    // Use absolute values for calculations
+    const absQty = Math.abs(qty);
+    const absValue = Math.abs(value);
 
     /* ===== BUY ===== */
-    if (type.startsWith("B")) {
-      const unitCost = qty !== 0 ? value / qty : 0;
-      buyQueue.push({ qty, unitCost });
-      buyQty += qty;
-      buyValue += value;
-      availableQty += qty;
-    } else if (type.startsWith("S")) {
-
+    if (isBuy && !isSell) {
+      const unitCost = absQty !== 0 ? absValue / absQty : 0;
+      buyQueue.push({ qty: absQty, unitCost });
+      buyQty += absQty;
+      buyValue += absValue;
+      availableQty += absQty;
+    } 
     /* ===== SELL ===== */
-      sellQty += qty;
-      sellValue += value;
+    else if (isSell) {
+      sellQty += absQty;
+      sellValue += absValue;
 
-      let remainingToMatch = Math.min(qty, availableQty); // we can only sell what we have
-      let unmatchedExtra = qty - remainingToMatch; // this part is assumed from opening balance (outside dataset)
+      let remainingToMatch = Math.min(absQty, availableQty); // we can only sell what we have
+      let unmatchedExtra = absQty - remainingToMatch; // this part is assumed from opening balance (outside dataset)
 
       // Consume from FIFO queue
       while (remainingToMatch > 0 && buyQueue.length) {
@@ -146,8 +175,8 @@ function fifoProcess(transactions) {
       // unmatchedExtra: sold from outside holdings → ignore for cost & holdings
       if (unmatchedExtra > 0) {
         console.warn(
-          `[fifoProcess] Sell ${qty} but only ${
-            qty - unmatchedExtra
+          `[fifoProcess] Sell ${absQty} but only ${
+            absQty - unmatchedExtra
           } available. Treating extra ${unmatchedExtra} as opening balance sell.`
         );
       }
@@ -929,38 +958,316 @@ exports.getClientIds = async (req, res) => {
     if (!app) {
       return res.status(500).json({ message: "Catalyst app context missing" });
     }
-    const tableName = sanitizeIdentifier(req.query.table || DEFAULT_TABLE);
-
+    
+    // Use clientIds table instead of Transaction table
+    const tableName = "clientIds";
     const zcql = app.zcql();
 
-    // Use DISTINCT query to get unique client IDs
-    const query = `SELECT DISTINCT ${tableName}.WS_client_id FROM ${tableName}`;
-    const rows = await zcql.executeZCQLQuery(query, []);
+    // Use pagination to fetch all client IDs (ZCQL may have default limit of 300)
+    const batchSize = 250; // ZCQL max is 300, use 250 to be safe
+    let offset = 0;
+    let hasMore = true;
+    const allClientIds = new Set(); // Use Set to automatically handle duplicates
+    let batchNumber = 0;
 
-    // Extract client IDs from results
-    const clientIds = [];
-    if (rows && rows.length > 0) {
-      rows.forEach((row) => {
-        // Handle different ZCQL result formats
-        const clientId =
-          row.WS_client_id ||
-          row[`${tableName}.WS_client_id`] ||
-          (row[tableName] && row[tableName].WS_client_id) ||
-          (row.Transaction && row.Transaction.WS_client_id);
-        if (clientId && String(clientId).trim() !== "") {
-          clientIds.push(String(clientId).trim());
+    console.log(`[getClientIds] Starting pagination to fetch all client IDs from ${tableName} table...`);
+
+    while (hasMore) {
+      batchNumber++;
+      // Query clientIds table - clientId column is int type
+      const query = `SELECT * FROM ${tableName} WHERE ${tableName}.clientId IS NOT NULL ORDER BY ${tableName}.clientId LIMIT ${batchSize} OFFSET ${offset}`;
+      
+      try {
+        const rows = await zcql.executeZCQLQuery(query, []);
+
+        if (!rows || rows.length === 0) {
+          console.log(`[getClientIds] No more rows at offset ${offset}`);
+          hasMore = false;
+          break;
         }
-      });
+
+        // Extract client IDs from results and add to Set (automatically deduplicates)
+        rows.forEach((row, index) => {
+          // Handle different ZCQL result formats
+          const r = row.clientIds || row[tableName] || row;
+          const clientId = r.clientId || r.ClientId;
+          
+          // Debug first row of first batch to see structure
+          if (batchNumber === 1 && index === 0) {
+            console.log(`[getClientIds] Sample row structure:`, {
+              hasClientIds: !!row.clientIds,
+              hasTableName: !!row[tableName],
+              directClientId: row.clientId,
+              extractedClientId: clientId,
+              rowKeys: Object.keys(row)
+            });
+          }
+          
+          if (clientId !== null && clientId !== undefined && clientId !== "") {
+            // Convert to string and add to set (handles both int and string formats)
+            allClientIds.add(String(clientId).trim());
+          }
+        });
+
+        console.log(`[getClientIds] Batch ${batchNumber} at offset ${offset}: Fetched ${rows.length} rows, unique client IDs so far: ${allClientIds.size}`);
+
+        if (rows.length < batchSize) {
+          hasMore = false;
+        } else {
+          offset += batchSize;
+          // Safety limit to prevent infinite loops
+          if (offset > 100000) {
+            console.warn(`[getClientIds] Reached safety limit of 100K rows, stopping`);
+            hasMore = false;
+          }
+        }
+      } catch (batchErr) {
+        console.error(`[getClientIds] Batch ${batchNumber} error at offset ${offset}:`, batchErr);
+        hasMore = false;
+      }
     }
 
-    // Sort and return unique client IDs
-    const uniqueData = [...new Set(clientIds)].sort();
+    // Convert Set to sorted array (numeric sort for client IDs)
+    const uniqueData = Array.from(allClientIds)
+      .map(id => parseInt(id, 10))
+      .filter(id => !isNaN(id))
+      .sort((a, b) => a - b)
+      .map(id => String(id));
 
+    console.log(`[getClientIds] Total unique client IDs found: ${uniqueData.length}`);
+    
     return res.status(200).json(uniqueData);
   } catch (err) {
     console.error("[getClientIds] Error:", err);
     return res.status(500).json({
       message: "Failed to fetch client ids",
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+};
+
+// Get all Account Codes from clientIds table
+exports.getAccountCodes = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+    
+    const tableName = "clientIds";
+    const zcql = app.zcql();
+
+    // Use pagination to fetch all account codes
+    const batchSize = 250;
+    let offset = 0;
+    let hasMore = true;
+    const allAccountCodes = new Set();
+    let batchNumber = 0;
+    let columnName = null; // Will be determined on first successful query
+
+    console.log(`[getAccountCodes] Starting pagination to fetch all account codes from ${tableName} table...`);
+
+    while (hasMore) {
+      batchNumber++;
+      
+      // Determine column name on first batch if not already determined
+      if (!columnName && offset === 0) {
+        // Try different column name variations
+        const columnVariations = ['ws_account_code', 'WS_Account_code', 'wsAccountCode'];
+        let foundColumn = null;
+        
+        for (const colName of columnVariations) {
+          try {
+            const testQuery = `SELECT * FROM ${tableName} WHERE ${tableName}.${colName} IS NOT NULL LIMIT 1`;
+            const testRows = await zcql.executeZCQLQuery(testQuery, []);
+            if (testRows && testRows.length > 0) {
+              // Check if column exists in result
+              const testRow = testRows[0].clientIds || testRows[0];
+              if (testRow[colName] !== undefined || testRow[colName.toLowerCase()] !== undefined || testRow[colName.toUpperCase()] !== undefined) {
+                columnName = colName;
+                console.log(`[getAccountCodes] Found column name: ${columnName}`);
+                break;
+              }
+            }
+          } catch (testErr) {
+            console.log(`[getAccountCodes] Column ${colName} not found, trying next...`);
+            continue;
+          }
+        }
+        
+        if (!columnName) {
+          // If no column found, try selecting all and checking row structure
+          try {
+            const allQuery = `SELECT * FROM ${tableName} LIMIT 1`;
+            const allRows = await zcql.executeZCQLQuery(allQuery, []);
+            if (allRows && allRows.length > 0) {
+              const testRow = allRows[0].clientIds || allRows[0];
+              console.log(`[getAccountCodes] Sample row keys:`, Object.keys(testRow));
+              // Try to find account code column
+              for (const key of Object.keys(testRow)) {
+                if (key.toLowerCase().includes('account') || key.toLowerCase().includes('code')) {
+                  columnName = key;
+                  console.log(`[getAccountCodes] Found account code column: ${columnName}`);
+                  break;
+                }
+              }
+            }
+          } catch (allErr) {
+            console.error(`[getAccountCodes] Error querying table structure:`, allErr);
+          }
+        }
+        
+        if (!columnName) {
+          return res.status(500).json({ 
+            message: "Could not find account code column in clientIds table",
+            error: "Please check table schema. Expected columns: ws_account_code, WS_Account_code, or wsAccountCode"
+          });
+        }
+      }
+      
+      // Build query with determined column name
+      const query = `SELECT * FROM ${tableName} WHERE ${tableName}.${columnName} IS NOT NULL ORDER BY ${tableName}.${columnName} LIMIT ${batchSize} OFFSET ${offset}`;
+      
+      try {
+        const rows = await zcql.executeZCQLQuery(query, []);
+
+        if (!rows || rows.length === 0) {
+          console.log(`[getAccountCodes] No more rows at offset ${offset}`);
+          hasMore = false;
+          break;
+        }
+
+        // Extract account codes from results
+        rows.forEach((row, index) => {
+          // Handle different ZCQL result formats
+          const r = row.clientIds || row[tableName] || row;
+          
+          // Try multiple column name variations (case-sensitive)
+          const accountCode = r.ws_account_code || 
+                             r.WS_Account_code || 
+                             r.wsAccountCode || 
+                             r['WS_Account_code'] ||
+                             r['ws_account_code'] ||
+                             r['wsAccountCode'];
+          
+          // Debug first row of first batch
+          if (batchNumber === 1 && index === 0) {
+            console.log(`[getAccountCodes] Sample row structure:`, {
+              hasClientIds: !!row.clientIds,
+              hasTableName: !!row[tableName],
+              rowKeys: Object.keys(row),
+              rKeys: Object.keys(r),
+              accountCode: accountCode
+            });
+          }
+          
+          if (accountCode !== null && accountCode !== undefined && accountCode !== "") {
+            allAccountCodes.add(String(accountCode).trim());
+          }
+        });
+
+        console.log(`[getAccountCodes] Batch ${batchNumber} at offset ${offset}: Fetched ${rows.length} rows, unique account codes so far: ${allAccountCodes.size}`);
+
+        if (rows.length < batchSize) {
+          hasMore = false;
+        } else {
+          offset += batchSize;
+          if (offset > 100000) {
+            console.warn(`[getAccountCodes] Reached safety limit of 100K rows, stopping`);
+            hasMore = false;
+          }
+        }
+      } catch (batchErr) {
+        console.error(`[getAccountCodes] Batch ${batchNumber} error at offset ${offset}:`, batchErr);
+        // If query fails, try alternative column name
+        if (batchNumber === 1 && offset === 0) {
+          try {
+            console.log(`[getAccountCodes] Trying alternative column name WS_Account_code...`);
+            const altQuery = `SELECT * FROM ${tableName} WHERE ${tableName}.WS_Account_code IS NOT NULL ORDER BY ${tableName}.WS_Account_code LIMIT ${batchSize} OFFSET ${offset}`;
+            const altRows = await zcql.executeZCQLQuery(altQuery, []);
+            if (altRows && altRows.length > 0) {
+              // Use alternative query for remaining batches
+              query = altQuery;
+              // Process this batch
+              altRows.forEach((row, index) => {
+                const r = row.clientIds || row[tableName] || row;
+                const accountCode = r.WS_Account_code || r.ws_account_code || r.wsAccountCode || r['WS_Account_code'] || r['ws_account_code'];
+                if (accountCode !== null && accountCode !== undefined && accountCode !== "") {
+                  allAccountCodes.add(String(accountCode).trim());
+                }
+              });
+              console.log(`[getAccountCodes] Alternative query worked! Using WS_Account_code column.`);
+              if (altRows.length < batchSize) {
+                hasMore = false;
+              } else {
+                offset += batchSize;
+              }
+              continue;
+            }
+          } catch (altErr) {
+            console.error(`[getAccountCodes] Alternative query also failed:`, altErr);
+          }
+        }
+        hasMore = false;
+      }
+    }
+
+    // Convert Set to sorted array
+    const uniqueData = Array.from(allAccountCodes)
+      .filter(code => code && code.trim() !== '')
+      .sort();
+
+    console.log(`[getAccountCodes] Total unique account codes found: ${uniqueData.length}`);
+    
+    return res.status(200).json(uniqueData);
+  } catch (err) {
+    console.error("[getAccountCodes] Error:", err);
+    return res.status(500).json({
+      message: "Failed to fetch account codes",
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+};
+
+// Get Client ID from Account Code
+exports.getClientIdByAccountCode = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+    
+    const accountCode = req.query.accountCode || req.query.wsAccountCode;
+    
+    if (!accountCode) {
+      return res.status(400).json({ message: "accountCode is required" });
+    }
+
+    const tableName = "clientIds";
+    const zcql = app.zcql();
+
+    // Query clientIds table to get Client ID for the given Account Code
+    const query = `SELECT * FROM ${tableName} WHERE ${tableName}.ws_account_code = '${String(accountCode).trim().replace(/'/g, "''")}' LIMIT 1`;
+    const rows = await zcql.executeZCQLQuery(query, []);
+    
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: `No client found for accountCode: ${accountCode}` });
+    }
+
+    const clientRow = rows[0].clientIds || rows[0];
+    const clientId = Number(clientRow.clientId || clientRow.ClientId || clientRow.client_id);
+    
+    if (!clientId || isNaN(clientId)) {
+      return res.status(400).json({ message: `Invalid clientId for accountCode: ${accountCode}` });
+    }
+
+    console.log(`[getClientIdByAccountCode] Found clientId: ${clientId} for accountCode: ${accountCode}`);
+    
+    return res.status(200).json({ clientId: String(clientId), accountCode: String(accountCode) });
+  } catch (err) {
+    console.error("[getClientIdByAccountCode] Error:", err);
+    return res.status(500).json({
+      message: "Failed to fetch client id for account code",
       error: String(err && err.message ? err.message : err),
     });
   }
@@ -974,17 +1281,29 @@ exports.getSymbols = async (req, res) => {
     }
     const tableName = sanitizeIdentifier(req.query.table || DEFAULT_TABLE);
     const zcql = app.zcql();
-    const query = `select distinct Security_code from ${tableName} where Security_code is not null`;
+    // Return both Security_Name and Security_code for full display
+    const query = `select distinct Security_Name, Security_code from ${tableName} where Security_Name is not null order by Security_Name`;
     const rows = await zcql.executeZCQLQuery(query, []);
-    // Handle different ZCQL result formats
+    // Handle different ZCQL result formats and return objects with both name and code
     const data = rows
       .map((r) => {
-        return (
+        const securityName =
+          r.Security_Name ||
+          r[`${tableName}.Security_Name`] ||
+          (r[tableName] && r[tableName].Security_Name) ||
+          (r.Transaction && r.Transaction.Security_Name) ||
+          '';
+        const securityCode =
           r.Security_code ||
           r[`${tableName}.Security_code`] ||
           (r[tableName] && r[tableName].Security_code) ||
-          (r.Transaction && r.Transaction.Security_code)
-        );
+          (r.Transaction && r.Transaction.Security_code) ||
+          '';
+        if (!securityName) return null;
+        return {
+          securityName: String(securityName).trim(),
+          securityCode: String(securityCode).trim(),
+        };
       })
       .filter(Boolean);
     return res.status(200).json(data);
@@ -1177,6 +1496,130 @@ exports.getStocksByClientId = async (req, res) => {
   }
 };
 
+// Get clients (with current holdings) for a specific security
+exports.getClientsBySecurityHoldings = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+
+    const securityNameRaw = req.query.securityName;
+    const securityCodeRaw = req.query.securityCode;
+
+    if (!securityNameRaw && !securityCodeRaw) {
+      return res.status(400).json({ message: "securityName or securityCode is required" });
+    }
+
+    const tableName = sanitizeIdentifier(req.query.table || DEFAULT_TABLE);
+    const zcql = app.zcql();
+
+    const securityName = securityNameRaw ? String(securityNameRaw).trim() : null;
+    const securityCode = securityCodeRaw ? String(securityCodeRaw).trim() : null;
+
+    // Helpers for transaction classification
+    const isBuyTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isBuy = type.startsWith('B') || type === 'BUY' || type === 'PURCHASE' || type.includes('BUY');
+      const isSQB = type === 'SQB';
+      const isOPI = type === 'OPI';
+      const isDividend =
+        type === 'DIO' ||
+        type === 'DIVIDEND' ||
+        type === 'DIVIDEND REINVEST' ||
+        type === 'DIVIDEND REINVESTMENT' ||
+        type === 'DIVIDEND RECEIVED' ||
+        type.startsWith('DIVIDEND') ||
+        type.includes('DIVIDEND');
+      return (isBuy || isSQB || isOPI) && !isDividend;
+    };
+
+    const isSellTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isSell = type.startsWith('S') || type === 'SELL' || type === 'SALE' || type.includes('SELL');
+      const isSQS = type === 'SQS';
+      const isOPO = type === 'OPO';
+      const isNF = type === 'NF-' || type.startsWith('NF-');
+      return isSell || isSQS || isOPO || isNF;
+    };
+
+    // Build WHERE clause
+    let where = `WHERE ${tableName}.Security_Name IS NOT NULL`;
+    if (securityName) {
+      const esc = securityName.replace(/'/g, "''");
+      where += ` AND ${tableName}.Security_Name = '${esc}'`;
+    }
+    if (securityCode) {
+      const esc = securityCode.replace(/'/g, "''");
+      where += ` AND ${tableName}.Security_code = '${esc}'`;
+    }
+
+    const batchSize = 250;
+    let offset = 0;
+    let hasMore = true;
+    const clientMap = new Map(); // clientId -> {clientId, securityName, securityCode, buyQty, sellQty}
+
+    while (hasMore) {
+      const query = `SELECT WS_client_id, Security_Name, Security_code, Tran_Type, QTY FROM ${tableName} ${where} ORDER BY ${tableName}.TRANDATE ASC, ${tableName}.ROWID ASC LIMIT ${batchSize} OFFSET ${offset}`;
+      const rows = await zcql.executeZCQLQuery(query, []);
+
+      if (!rows || rows.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      rows.forEach((row) => {
+        const r = row.Transaction || row[tableName] || row;
+        const clientId = r.WS_client_id ?? r.ws_client_id;
+        if (!clientId) return;
+        const qty = Math.abs(toNumber(r.QTY));
+        const tranType = r.Tran_Type || r.tran_type;
+
+        const existing = clientMap.get(clientId) || {
+          clientId,
+          securityName: r.Security_Name || r.security_name || securityName || '',
+          securityCode: r.Security_code || r.security_code || securityCode || '',
+          buyQty: 0,
+          sellQty: 0,
+        };
+
+        if (isBuyTransaction(tranType)) {
+          existing.buyQty += qty;
+        } else if (isSellTransaction(tranType)) {
+          existing.sellQty += qty;
+        }
+
+        clientMap.set(clientId, existing);
+      });
+
+      if (rows.length < batchSize) {
+        hasMore = false;
+      } else {
+        offset += batchSize;
+      }
+    }
+
+    const result = Array.from(clientMap.values())
+      .map((entry) => ({
+        clientId: entry.clientId,
+        securityName: entry.securityName,
+        securityCode: entry.securityCode,
+        currentQty: entry.buyQty - entry.sellQty,
+      }))
+      .filter((entry) => entry.currentQty > 0);
+
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error("[getClientsBySecurityHoldings] Error:", err);
+    return res.status(500).json({
+      message: "Failed to fetch clients by security",
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+};
+
 // Get holdings summary for a client (stock-wise holdings with calculations)
 // OPTIMIZED: Uses aggregation queries instead of fetching all transactions
 // Get holdings summary for a client (stock-wise holdings with FIFO cost)
@@ -1204,99 +1647,604 @@ exports.getHoldingsSummary = async (req, res) => {
 
     // Build base WHERE
     let where = ` WHERE ${tableName}.WS_client_id = ${clientId}`;
+    console.log(`[getHoldingsSummary] Filtering by client ID: ${clientId}`);
+    
     // Optional as-of date filter
+    let endDate = null;
     if (req.query.endDate || req.query.trandate_to) {
-      const endDate = String(req.query.endDate || req.query.trandate_to).trim();
-      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      const endDateStr = String(req.query.endDate || req.query.trandate_to).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
+        endDate = endDateStr;
         where += ` AND ${tableName}.TRANDATE <= '${endDate}'`;
+        console.log(`[getHoldingsSummary] Date filter applied: <= ${endDate}`);
       }
     }
+    
+    console.log(`[getHoldingsSummary] WHERE clause: ${where}`);
 
     // Exclude pseudo/non-equity rows
     where += ` AND ${tableName}.Security_Name IS NOT NULL`;
-    where += ` AND ${tableName}.Security_Name NOT IN (
-      'CASH',
-      'Tax Deducted at Source',
-      'TAX',
-      'TDS',
-      'TAX DEDUCTED AT SOURCE'
-    )`;
+    // Note: We filter out non-equity rows in code instead of SQL to see what's being excluded
+    // where += ` AND ${tableName}.Security_Name NOT IN (
+    //   'CASH',
+    //   'Tax Deducted at Source',
+    //   'TAX',
+    //   'TDS',
+    //   'TAX DEDUCTED AT SOURCE'
+    // )`;
+    // Security_code is optional - we group by Security_Name only
 
-    const query = `
-      SELECT *
-      FROM ${tableName}
-      ${where}
-      ORDER BY ${tableName}.Security_Name ASC,
-               ${tableName}.Security_code ASC,
-               ${tableName}.TRANDATE ASC,
-               ${tableName}.ROWID ASC
-    `;
+    // Fetch all transactions in batches to avoid ZCQL row limit (300 rows)
+    const batchSize = 250; // ZCQL max is 300, use 250 to be safe
+    let offset = 0;
+    let hasMore = true;
+    let allRows = [];
+    let batchNumber = 0;
 
-    console.log("[getHoldingsSummary] Query:", query);
+    console.log(`[getHoldingsSummary] Starting pagination to fetch all transactions for client ${clientId}...`);
 
-    const rows = await zcql.executeZCQLQuery(query, []);
+    while (hasMore) {
+      batchNumber++;
+      const query = `
+        SELECT *
+        FROM ${tableName}
+        ${where}
+        ORDER BY ${tableName}.Security_code ASC,
+                 ${tableName}.TRANDATE ASC,
+                 ${tableName}.ROWID ASC
+        LIMIT ${batchSize} OFFSET ${offset}
+      `;
+
+      try {
+        const rows = await zcql.executeZCQLQuery(query, []);
+        
+        if (!rows || rows.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        allRows.push(...rows);
+        console.log(`[getHoldingsSummary] Batch ${batchNumber}: Fetched ${rows.length} rows, total so far: ${allRows.length}`);
+
+        if (rows.length < batchSize) {
+          hasMore = false;
+        } else {
+          offset += batchSize;
+          // Safety limit
+          if (offset > 100000) {
+            console.warn(`[getHoldingsSummary] Reached safety limit of 100K rows, stopping`);
+            hasMore = false;
+          }
+        }
+      } catch (batchErr) {
+        console.error(`[getHoldingsSummary] Batch ${batchNumber} error:`, batchErr.message);
+        hasMore = false;
+      }
+    }
+
     console.log(
-      `[getHoldingsSummary] Total transactions fetched for client ${clientId}: ${
-        rows ? rows.length : 0
-      }`
+      `[getHoldingsSummary] Total transactions fetched for client ${clientId}: ${allRows.length}`
     );
 
-    const byStock = {};
+    // Helper function for name normalization (same as in getStockTransactionHistory)
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return String(name)
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .replace(/[^\w\s]/g, '') // Remove special characters
+        .replace(/\bLIMITED\b/g, 'LTD') // Convert LIMITED to LTD
+        .replace(/\bINCORPORATED\b/g, 'INC') // Convert INCORPORATED to INC
+        .replace(/\bCORPORATION\b/g, 'CORP') // Convert CORPORATION to CORP
+        .replace(/\bPRIVATE\b/g, 'PVT') // Convert PRIVATE to PVT
+        .replace(/\s+/g, ' '); // Clean up any extra spaces after replacements
+    };
 
-    (rows || []).forEach((r) => {
+    // Fetch bonuses for this client (paginated to avoid ZCQL 300-row limit)
+    console.log(`[getHoldingsSummary] Fetching bonuses for client ${clientId}...`);
+    const bonusTableName = 'Bonus';
+    const bonusBatchSize = 250;
+    let bonusOffset = 0;
+    let bonusHasMore = true;
+    const allBonusRows = [];
+
+    while (bonusHasMore) {
+      // Inline ClientId to avoid ZCQL parameter binding issues
+      const bonusQuery = `SELECT * FROM ${bonusTableName} WHERE ${bonusTableName}.ClientId = ${clientId} LIMIT ${bonusBatchSize} OFFSET ${bonusOffset}`;
+      try {
+        const bonusRows = await zcql.executeZCQLQuery(bonusQuery, []);
+        if (!bonusRows || bonusRows.length === 0) {
+          bonusHasMore = false;
+          break;
+        }
+        allBonusRows.push(...bonusRows);
+        if (bonusRows.length < bonusBatchSize) {
+          bonusHasMore = false;
+        } else {
+          bonusOffset += bonusBatchSize;
+          if (bonusOffset > 100000) bonusHasMore = false; // Safety limit
+        }
+      } catch (bonusErr) {
+        console.error(`[getHoldingsSummary] Error fetching bonus batch at offset ${bonusOffset}:`, bonusErr.message);
+        bonusHasMore = false;
+      }
+    }
+
+    console.log(`[getHoldingsSummary] Total bonus records fetched for client ${clientId}: ${allBonusRows.length}`);
+
+    // Track all unique Security_Name values from raw data (before filtering)
+    const allUniqueNames = new Set();
+    (allRows || []).forEach((r) => {
       const t = r.Transaction || r[tableName] || r;
-      const stockName = t.Security_Name;
-      const stockCode = t.Security_code || "";
+      const stockName = t.Security_Name || t.security_name || t.SecurityName || t.securityName;
+      if (stockName) {
+        allUniqueNames.add(String(stockName).trim());
+      }
+    });
+    console.log(`[getHoldingsSummary] Total unique Security_Name values in raw data: ${allUniqueNames.size}`);
 
+    // Group by Security_Name only (Security_code is not reliable in some places)
+    const byStock = {};
+    const stockInfo = {}; // Track stock info for each unique stock
+    const excludedStocks = new Set(); // Track excluded stocks
+
+    (allRows || []).forEach((r) => {
+      const t = r.Transaction || r[tableName] || r;
+      
+      // Verify client ID matches (safety check)
+      const rowClientId = t.WS_client_id || t.ws_client_id || t.WSClientId || t.wsClientId;
+      if (rowClientId && Number(rowClientId) !== clientId) {
+        console.warn(`[getHoldingsSummary] Row client ID mismatch: expected ${clientId}, got ${rowClientId}, skipping`);
+        return; // Skip this row if client ID doesn't match
+      }
+      
+      // Handle different field name formats (case-insensitive)
+      const stockName = t.Security_Name || t.security_name || t.SecurityName || t.securityName;
+      const stockCode = t.Security_code || t.security_code || t.SecurityCode || t.securityCode || "";
+      const tranType = t.Tran_Type || t.tran_type || t.TranType || t.tranType || "";
+      const qty = t.QTY || t.qty || t.Qty || 0;
+      const netAmount = t.Net_Amount || t.net_amount || t.NetAmount || t.netAmount || 0;
+      const trandate = t.TRANDATE || t.trandate || t.Trandate || "";
+      const rowid = t.ROWID || t.rowid || t.Rowid || 0;
+
+      // Only require Security_Name (Security_code is optional)
       if (!stockName) return;
 
-      const key = `${stockName}|${stockCode}`;
+      // Filter out non-equity rows (do this in code to see what's being excluded)
+      const normalizedName = String(stockName).trim().toUpperCase();
+      const excludedNames = ['CASH', 'TAX', 'TDS', 'TAX DEDUCTED AT SOURCE'];
+      if (excludedNames.includes(normalizedName)) {
+        excludedStocks.add(String(stockName).trim());
+        return; // Skip non-equity rows
+      }
+
+      // Use Security_Name as the unique key (normalize to handle case differences)
+      const key = normalizedName;
+      
+      // Store stock info for this unique stock (use first Security_code encountered)
+      if (!stockInfo[key]) {
+        stockInfo[key] = {
+          stockName: String(stockName).trim(),
+          stockCode: String(stockCode).trim() || "" // Store code if available, empty string if not
+        };
+      }
+
       if (!byStock[key]) byStock[key] = [];
 
       byStock[key].push({
-        tranType: t.Tran_Type,
-        qty: t.QTY,
-        netAmount: t.Net_Amount,
-        trandate: t.TRANDATE,
-        rowid: t.ROWID,
+        tranType: String(tranType).trim(),
+        qty: Number(qty) || 0,
+        netAmount: Number(netAmount) || 0,
+        trandate: String(trandate).trim(),
+        rowid: Number(rowid) || 0,
       });
     });
 
     const result = [];
 
     for (const key of Object.keys(byStock)) {
-      const [stockName, stockCode] = key.split("|");
+      const info = stockInfo[key] || { stockName: "Unknown", stockCode: "" };
+      const stockName = info.stockName;
+      const stockCode = info.stockCode;
+      const transactions = byStock[key];
 
-      const fifo = fifoProcess(byStock[key]);
+      // Log for debugging specific stock
+      if (stockName.toLowerCase().includes('gujarat narmada')) {
+        console.log(`[getHoldingsSummary] Processing Gujarat Narmada stock: ${stockName} (${stockCode})`);
+        console.log(`[getHoldingsSummary] Transaction count: ${transactions.length}`);
+        console.log(`[getHoldingsSummary] Transactions:`, transactions.map(t => ({
+          type: t.tranType,
+          qty: t.qty,
+          netAmount: t.netAmount,
+          date: t.trandate
+        })));
+      }
 
-      // Only keep stocks with positive holdings
-      if (fifo.holdingQty <= 0) continue;
+      // Process transactions chronologically (same logic as getStockTransactionHistory)
+      // Sort transactions by date
+      const sortedTransactions = [...transactions].sort((a, b) => {
+        const dateA = a.trandate ? new Date(a.trandate).getTime() : 0;
+        const dateB = b.trandate ? new Date(b.trandate).getTime() : 0;
+        if (dateA !== dateB) return dateA - dateB;
+        return (a.rowid || 0) - (b.rowid || 0);
+      });
 
+      // Get matching bonuses for this stock (filter by ExDate if endDate is provided)
+      const normalizedStockName = normalizeName(stockName);
+      const matchingBonuses = [];
+      
+      allBonusRows.forEach((bonusRow) => {
+        const b = bonusRow.Bonus || bonusRow[bonusTableName] || bonusRow;
+        
+        // Extract CompanyName
+        const bonusCompanyName = b.CompanyName || 
+                                b['CompanyName'] || 
+                                b[`${bonusTableName}.CompanyName`] || 
+                                b['Bonus.CompanyName'] || '';
+        
+        // Extract ClientId to verify it matches
+        const rawClientId = b.ClientId !== undefined ? b.ClientId : 
+                           (b.clientId !== undefined ? b.clientId : 
+                            (b[`${bonusTableName}.ClientId`] !== undefined ? b[`${bonusTableName}.ClientId`] :
+                             (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null)));
+        
+        let bonusClientId = null;
+        if (rawClientId !== undefined && rawClientId !== null) {
+          bonusClientId = typeof rawClientId === 'number' ? rawClientId : Number(rawClientId);
+          if (isNaN(bonusClientId)) {
+            bonusClientId = null;
+          }
+        }
+        
+        // Extract ExDate
+        const exDate = b.ExDate || b['ExDate'] || b[`${bonusTableName}.ExDate`] || b['Bonus.ExDate'] || '';
+        
+        // Match by normalized company name and client ID
+        const normalizedBonusName = normalizeName(bonusCompanyName);
+        const matchesCompany = normalizedBonusName === normalizedStockName;
+        const matchesClient = bonusClientId === null || bonusClientId === clientId;
+        
+        // Filter by ExDate if endDate is provided
+        let matchesDate = true;
+        if (endDate && exDate) {
+          const exDateObj = new Date(exDate);
+          const endDateObj = new Date(endDate);
+          matchesDate = exDateObj <= endDateObj;
+        }
+        
+        if (matchesCompany && matchesClient && matchesDate) {
+          // Extract BonusShare
+          const bonusShare = b.BonusShare || 
+                            b['BonusShare'] || 
+                            b[`${bonusTableName}.BonusShare`] || 
+                            b['Bonus.BonusShare'] || 0;
+          const bonusQty = Number(bonusShare) || 0;
+          
+          // Use ExDate as the date, fallback to '1900-01-01' if missing
+          const bonusDate = exDate && exDate.trim() !== '' ? exDate : '1900-01-01';
+          
+          matchingBonuses.push({
+            date: bonusDate,
+            qty: bonusQty
+          });
+        }
+      });
+
+      // Combine transactions and bonuses, then sort chronologically
+      const allEvents = [
+        ...sortedTransactions.map(t => ({ 
+          type: 'transaction', 
+          data: t, 
+          date: t.trandate || '1900-01-01' 
+        })),
+        ...matchingBonuses.map(b => ({ 
+          type: 'bonus', 
+          data: b, 
+          date: b.date 
+        }))
+      ];
+
+      // Sort all events by date
+      allEvents.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        if (dateA !== dateB) return dateA - dateB;
+        // Transactions come before bonuses on the same date
+        if (a.type !== b.type) {
+          return a.type === 'transaction' ? -1 : 1;
+        }
+        return 0;
+      });
+
+      // Process events chronologically to calculate current holding
+      let currentHolding = 0;
+      
+      for (const event of allEvents) {
+        if (event.type === 'transaction') {
+          const t = event.data;
+          const type = String(t.tranType || "").toUpperCase().trim();
+          const rawQty = Number(t.qty) || 0;
+          const qty = Math.abs(rawQty);
+
+          // Skip zero quantity transactions
+          if (qty === 0) continue;
+
+          // Check for dividend-related transactions - exclude from holdings calculation
+          const isDividend = type === "DIO" || 
+                            type === "DIVIDEND" || 
+                            type === "DIVIDEND REINVEST" || 
+                            type === "DIVIDEND REINVESTMENT" ||
+                            type === "DIVIDEND RECEIVED" ||
+                            type.startsWith("DIVIDEND") ||
+                            type.includes("DIVIDEND");
+          
+          if (isDividend) continue; // Skip dividend transactions
+
+          // Determine if buy or sell
+          const isSQB = type === "SQB";
+          const isSQS = type === "SQS";
+          const isOPI = type === "OPI";
+          const isOPO = type === "OPO";
+          const isNF = type === "NF-" || type.startsWith("NF-");
+          
+          const isBuy = type.startsWith("B") || isSQB || isOPI;
+          const isSell = type.startsWith("S") || isSQS || isOPO || isNF;
+
+          if (isBuy) {
+            currentHolding += qty;
+          } else if (isSell) {
+            currentHolding -= qty;
+            if (currentHolding < 0) currentHolding = 0; // Safety check
+          }
+        } else if (event.type === 'bonus') {
+          // Bonus: Add to holdings
+          const bonusQty = event.data.qty || 0;
+          currentHolding += bonusQty;
+        }
+      }
+
+      // Include all stocks, even with zero holdings
+      // Only return basic info: stock name, code, and current holding
+      // Other calculations (profit, weighted average, etc.) will be done when stock is clicked
       result.push({
         stockName,
         stockCode,
-        currentHolding: fifo.holdingQty,
-        totalBuyQty: fifo.buyQty,
-        totalSellQty: fifo.sellQty,
-        totalBuyAmount: fifo.buyValue,
-        totalSellAmount: fifo.sellValue,
-        weightedAverageBuyPrice: fifo.avgCost,
-        profit: fifo.profit,
+        currentHolding,
       });
     }
 
-    // Sort alphabetically
+    // Sort alphabetically by Security_Name
     result.sort((a, b) => a.stockName.localeCompare(b.stockName));
 
     console.log(
       `[getHoldingsSummary] Final holdings for client ${clientId}: ${result.length} stocks`
     );
+    console.log(`[getHoldingsSummary] Excluded stocks (non-equity): ${excludedStocks.size}`, Array.from(excludedStocks));
+    console.log(`[getHoldingsSummary] Summary: ${allUniqueNames.size} unique names in DB, ${excludedStocks.size} excluded, ${result.length} returned`);
+    
+    // Log if there's a mismatch
+    const excludedNamesList = ['CASH', 'TAX', 'TDS', 'TAX DEDUCTED AT SOURCE'];
+    if (allUniqueNames.size - excludedStocks.size !== result.length) {
+      console.warn(`[getHoldingsSummary] Mismatch detected! Expected ${allUniqueNames.size - excludedStocks.size} stocks, got ${result.length}`);
+      const processedNames = new Set(result.map(r => r.stockName));
+      const missingNames = Array.from(allUniqueNames).filter(name => 
+        !excludedNamesList.includes(String(name).trim().toUpperCase()) && 
+        !processedNames.has(String(name).trim())
+      );
+      if (missingNames.length > 0) {
+        console.warn(`[getHoldingsSummary] Missing stocks:`, missingNames);
+      }
+    }
 
     return res.status(200).json(result);
   } catch (err) {
     console.error("[getHoldingsSummary] Error:", err);
     return res.status(500).json({
       message: "Failed to fetch holdings summary",
+      error: String(err && err.message ? err.message : err),
+    });
+  }
+};
+
+// Get all unique clients with their cumulative holdings (sum of all stock holdings)
+exports.getClientsWithCumulativeHoldings = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+
+    const tableName = sanitizeIdentifier(req.query.table || DEFAULT_TABLE);
+    const zcql = app.zcql();
+
+    // Optional as-of date filter
+    let dateFilter = '';
+    if (req.query.endDate || req.query.trandate_to) {
+      const endDate = String(req.query.endDate || req.query.trandate_to).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        dateFilter = ` AND ${tableName}.TRANDATE <= '${endDate}'`;
+      }
+    }
+
+    // Get all unique client IDs
+    const clientQuery = `SELECT DISTINCT ${tableName}.WS_client_id FROM ${tableName} WHERE ${tableName}.WS_client_id IS NOT NULL`;
+    const clientRows = await zcql.executeZCQLQuery(clientQuery, []);
+    
+    const clientIds = [];
+    if (clientRows && clientRows.length > 0) {
+      clientRows.forEach((row) => {
+        const clientId = row.WS_client_id || row[`${tableName}.WS_client_id`] || (row[tableName] && row[tableName].WS_client_id);
+        if (clientId && String(clientId).trim() !== "") {
+          const numClientId = parseInt(String(clientId).trim(), 10);
+          if (!isNaN(numClientId)) {
+            clientIds.push(numClientId);
+          }
+        }
+      });
+    }
+
+    console.log(`[getClientsWithCumulativeHoldings] Found ${clientIds.length} unique clients`);
+
+    // Helper function for name normalization
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return String(name)
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\bLIMITED\b/g, 'LTD')
+        .replace(/\bINCORPORATED\b/g, 'INC')
+        .replace(/\bCORPORATION\b/g, 'CORP')
+        .replace(/\bPRIVATE\b/g, 'PVT')
+        .replace(/\s+/g, ' ');
+    };
+
+    // For each client, calculate cumulative holdings by fetching their holdings summary
+    const results = [];
+    for (const clientId of clientIds) {
+      try {
+        // Build WHERE clause for this client
+        let where = ` WHERE ${tableName}.WS_client_id = ${clientId}`;
+        if (dateFilter) {
+          where += dateFilter;
+        }
+        where += ` AND ${tableName}.Security_Name IS NOT NULL`;
+
+        // Fetch all transactions for this client in batches
+        const batchSize = 250;
+        let offset = 0;
+        let hasMore = true;
+        let allRows = [];
+
+        while (hasMore) {
+          const query = `SELECT * FROM ${tableName} ${where} ORDER BY ${tableName}.Security_Name ASC, ${tableName}.TRANDATE ASC LIMIT ${batchSize} OFFSET ${offset}`;
+          const rows = await zcql.executeZCQLQuery(query, []);
+          
+          if (!rows || rows.length === 0) {
+            hasMore = false;
+            break;
+          }
+          
+          allRows.push(...rows);
+          if (rows.length < batchSize) {
+            hasMore = false;
+          } else {
+            offset += batchSize;
+            if (offset > 100000) {
+              hasMore = false;
+            }
+          }
+        }
+
+        // Fetch bonuses for this client
+        const bonusTableName = 'Bonus';
+        const bonusBatchSize = 250;
+        let bonusOffset = 0;
+        let bonusHasMore = true;
+        const allBonusRows = [];
+
+        while (bonusHasMore) {
+          const bonusQuery = `SELECT * FROM ${bonusTableName} WHERE ${bonusTableName}.ClientId = ${clientId} LIMIT ${bonusBatchSize} OFFSET ${bonusOffset}`;
+          try {
+            const bonusRows = await zcql.executeZCQLQuery(bonusQuery, []);
+            if (!bonusRows || bonusRows.length === 0) {
+              bonusHasMore = false;
+              break;
+            }
+            allBonusRows.push(...bonusRows);
+            if (bonusRows.length < bonusBatchSize) {
+              bonusHasMore = false;
+            } else {
+              bonusOffset += bonusBatchSize;
+              if (bonusOffset > 100000) bonusHasMore = false;
+            }
+          } catch (bonusErr) {
+            console.error(`[getClientsWithCumulativeHoldings] Error fetching bonus batch for client ${clientId}:`, bonusErr.message);
+            bonusHasMore = false;
+          }
+        }
+
+        // Calculate holdings per stock (same logic as getHoldingsSummary)
+        const stockMap = new Map();
+        allRows.forEach((row) => {
+          const r = row.Transaction || row[tableName] || row;
+          const stockName = (r.Security_Name || '').trim();
+          if (!stockName) return;
+
+          const type = String(r.Tran_Type || '').toUpperCase().trim();
+          const isBuy = type.startsWith('B') || type === 'SQB' || type === 'OPI';
+          const isSell = type.startsWith('S') || type === 'SQS' || type === 'OPO' || type === 'NF-' || type.startsWith('NF-');
+          const isDividend = type === 'DIO' || type === 'DIVIDEND' || type.startsWith('DIVIDEND') || type.includes('DIVIDEND');
+          
+          if (isDividend) return; // Exclude dividends
+
+          if (!stockMap.has(stockName)) {
+            stockMap.set(stockName, { buyQty: 0, sellQty: 0, bonusQty: 0 });
+          }
+          
+          const qty = Math.abs(toNumber(r.QTY) || 0);
+          if (isBuy) {
+            stockMap.get(stockName).buyQty += qty;
+          } else if (isSell) {
+            stockMap.get(stockName).sellQty += qty;
+          }
+        });
+
+        // Add bonus shares to stockMap
+        allBonusRows.forEach((bonusRow) => {
+          const b = bonusRow.Bonus || bonusRow[bonusTableName] || bonusRow;
+          const bonusCompanyName = b.CompanyName || 
+                                  b['CompanyName'] || 
+                                  b[`${bonusTableName}.CompanyName`] || 
+                                  b['Bonus.CompanyName'] || '';
+          
+          if (!bonusCompanyName) return;
+          
+          // Find matching stock by normalized name
+          const normalizedBonusName = normalizeName(bonusCompanyName);
+          for (const [stockName, stockData] of stockMap.entries()) {
+            const normalizedStockName = normalizeName(stockName);
+            if (normalizedBonusName === normalizedStockName) {
+              const bonusShare = b.BonusShare || 
+                                b['BonusShare'] || 
+                                b[`${bonusTableName}.BonusShare`] || 
+                                b['Bonus.BonusShare'] || 0;
+              stockData.bonusQty += (Number(bonusShare) || 0);
+              break; // Found match, move to next bonus
+            }
+          }
+        });
+
+        // Calculate cumulative holding (including bonuses)
+        let cumulativeHolding = 0;
+        stockMap.forEach((stock) => {
+          cumulativeHolding += Math.max(0, stock.buyQty - stock.sellQty + stock.bonusQty);
+        });
+
+        results.push({
+          clientId: String(clientId),
+          cumulativeHolding: cumulativeHolding
+        });
+      } catch (err) {
+        console.error(`[getClientsWithCumulativeHoldings] Error calculating holdings for client ${clientId}:`, err);
+        results.push({
+          clientId: String(clientId),
+          cumulativeHolding: 0
+        });
+      }
+    }
+
+    // Sort by client ID
+    results.sort((a, b) => parseInt(a.clientId) - parseInt(b.clientId));
+
+    console.log(`[getClientsWithCumulativeHoldings] Returning ${results.length} clients with cumulative holdings`);
+    return res.status(200).json(results);
+  } catch (err) {
+    console.error("[getClientsWithCumulativeHoldings] Error:", err);
+    return res.status(500).json({
+      message: "Failed to fetch clients with cumulative holdings",
       error: String(err && err.message ? err.message : err),
     });
   }
@@ -1311,12 +2259,13 @@ exports.getStockTransactionHistory = async (req, res) => {
     }
 
     const clientId = req.query.clientId || req.query.ws_client_id;
-    const stockName = decodeURIComponent(req.params.stockName); // URL parameter
+    const stockName = req.params.stockName ? decodeURIComponent(req.params.stockName) : null;
+    const stockCode = req.query.stockCode || req.query.security_code; // Support filtering by Security_code
 
-    if (!clientId || !stockName) {
+    if (!clientId || (!stockName && !stockCode)) {
       return res
         .status(400)
-        .json({ message: "Client ID and Stock Name are required" });
+        .json({ message: "Client ID and Stock Name or Stock Code are required" });
     }
 
     const tableName = sanitizeIdentifier(req.query.table || DEFAULT_TABLE);
@@ -1329,12 +2278,19 @@ exports.getStockTransactionHistory = async (req, res) => {
     }
     const numClientId = parseInt(clientIdValue, 10);
 
-    // Escape single quotes in stock name (ZCQL v2 requirement)
-    const escapedStockName = String(stockName).trim().replace(/'/g, "''");
-
-    // Build WHERE clause - Fetch ALL transactions (both BUY and SELL) for this stock
-    // No filtering by Tran_Type - we want to show everything
-    let whereClause = `WHERE ${tableName}.WS_client_id = ${numClientId} AND ${tableName}.Security_Name = '${escapedStockName}'`;
+    // Build WHERE clause - Fetch ALL transactions for this stock (all transaction types: Buy, Sell, Dividend, etc.)
+    // No filtering by Tran_Type - we want to show everything including Buy, Sell, Dividend, Dividend Reinvest, Dividend Received
+    let whereClause = `WHERE ${tableName}.WS_client_id = ${numClientId}`;
+    
+    // Filter by Security_Name first (since holdings are grouped by Security_Name), then Security_code as additional filter if both provided
+    if (stockName) {
+      const escapedStockName = String(stockName).trim().replace(/'/g, "''");
+      whereClause += ` AND ${tableName}.Security_Name = '${escapedStockName}'`;
+    } else if (stockCode) {
+      // Fallback to Security_code only if Security_Name is not provided
+      const escapedStockCode = String(stockCode).trim().replace(/'/g, "''");
+      whereClause += ` AND ${tableName}.Security_code = '${escapedStockCode}'`;
+    }
 
     // Add date filter if provided
     if (req.query.endDate || req.query.trandate_to) {
@@ -1344,8 +2300,9 @@ exports.getStockTransactionHistory = async (req, res) => {
       }
     }
 
+    const stockIdentifier = stockName || stockCode;
     console.log(
-      `[getStockTransactionHistory] Fetching ALL transactions (BUY + SELL) for client ${numClientId}, stock: ${stockName}`
+      `[getStockTransactionHistory] Fetching ALL transactions (all types: Buy, Sell, Dividend, etc.) for client ${numClientId}, ${stockName ? 'stockName' : 'stockCode'}: ${stockIdentifier}`
     );
     console.log(`[getStockTransactionHistory] WHERE clause: ${whereClause}`);
 
@@ -1423,7 +2380,7 @@ exports.getStockTransactionHistory = async (req, res) => {
       `[getStockTransactionHistory] Total fetched: ${totalFetched} transactions`
     );
 
-    // Verify we have both BUY and SELL transactions
+    // Verify we have all transaction types (Buy, Sell, Dividend, Dividend Reinvest, Dividend Received, etc.)
     const buyCountBeforeTransform = allTransactions.filter((row) => {
       const r = row.Transaction || row[tableName] || row;
       const tranType = r.Tran_Type || r.tran_type || "";
@@ -1442,7 +2399,9 @@ exports.getStockTransactionHistory = async (req, res) => {
 
     // Transform rows to match frontend format (same as in api.js)
     // IMPORTANT: Include ALL transactions - don't filter any out
-    const transactions = allTransactions.map((row, index) => {
+    // But filter to ensure we only return transactions for the requested stock
+    const transactions = allTransactions
+      .map((row, index) => {
       // Handle Transaction wrapper from ZCQL
       const r = row.Transaction || row[tableName] || row;
 
@@ -1477,6 +2436,7 @@ exports.getStockTransactionHistory = async (req, res) => {
         exchg: r.EXCHG ?? r.exchg ?? (row.EXCHG || row.exchg),
         qty: r.QTY ?? r.qty ?? (row.QTY || row.qty),
         rate: r.RATE ?? r.rate ?? (row.RATE || row.rate),
+        netrate: r.NETRATE ?? r.netrate ?? r.netRate ?? (row.NETRATE || row.netrate || row.netRate),
         netAmount:
           r.Net_Amount ??
           r.net_amount ??
@@ -1498,7 +2458,462 @@ exports.getStockTransactionHistory = async (req, res) => {
       }
 
       return transaction;
+    })
+    .filter((transaction) => {
+      // Safety check: Only return transactions that match the requested stock name
+      // This ensures we don't accidentally return transactions from other stocks
+      if (stockName) {
+        const transactionStockName = String(transaction.securityName || "").trim();
+        const requestedStockName = String(stockName).trim();
+        const matches = transactionStockName.toUpperCase() === requestedStockName.toUpperCase();
+        if (!matches) {
+          console.warn(
+            `[getStockTransactionHistory] Filtered out transaction: stockName mismatch. Expected: "${requestedStockName}", Got: "${transactionStockName}"`
+          );
+        }
+        return matches;
+      }
+      // If filtering by stockCode only, verify it matches
+      if (stockCode) {
+        const transactionStockCode = String(transaction.securityCode || "").trim();
+        const requestedStockCode = String(stockCode).trim();
+        return transactionStockCode === requestedStockCode;
+      }
+      return true; // If neither stockName nor stockCode provided, return all (shouldn't happen)
     });
+
+    // Normalize function for matching Security-Name with Company-Name
+    // Handles common variations like "LTD" vs "LIMITED", "INC" vs "INCORPORATED", etc.
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return String(name)
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .replace(/[^\w\s]/g, '') // Remove special characters
+        .replace(/\bLIMITED\b/g, 'LTD') // Convert LIMITED to LTD
+        .replace(/\bINCORPORATED\b/g, 'INC') // Convert INCORPORATED to INC
+        .replace(/\bCORPORATION\b/g, 'CORP') // Convert CORPORATION to CORP
+        .replace(/\s+/g, ' '); // Clean up any extra spaces after replacements
+    };
+
+    // Fetch bonuses matching by Company-Name = Security-Name
+    let bonuses = [];
+    if (stockName) {
+      try {
+        const normalizedStockName = normalizeName(stockName);
+        console.log(`[getStockTransactionHistory] Fetching bonuses for stock: ${stockName} (normalized: ${normalizedStockName})`);
+        
+        // IMPORTANT:
+        // ZCQL caps results (~300 rows). Never do `SELECT * FROM Bonus`.
+        // Also, exact CompanyName string comparisons are brittle (trailing dots/spaces/case).
+        // So we fetch bonuses for this client (paginated) and match by normalized company name in JS.
+        const bonusTableName = 'Bonus';
+
+        // Fetch all bonuses for this client in batches (usually small; still safe if larger)
+        const bonusBatchSize = 250;
+        let bonusOffset = 0;
+        let bonusHasMore = true;
+        const bonusRows = [];
+
+        while (bonusHasMore) {
+          // NOTE: For some Catalyst projects, binding numeric params against INT columns
+          // can throw range errors even for valid values. Since numClientId is already
+          // validated as digits and parsed, it is safe to inline here.
+          const bonusQuery = `SELECT * FROM ${bonusTableName} WHERE ${bonusTableName}.ClientId = ${numClientId} LIMIT ${bonusBatchSize} OFFSET ${bonusOffset}`;
+          const rows = await zcql.executeZCQLQuery(bonusQuery, []);
+          if (!rows || rows.length === 0) {
+            bonusHasMore = false;
+            break;
+          }
+          bonusRows.push(...rows);
+          if (rows.length < bonusBatchSize) {
+            bonusHasMore = false;
+          } else {
+            bonusOffset += bonusBatchSize;
+            // hard safety guard
+            if (bonusOffset > 100000) bonusHasMore = false;
+          }
+        }
+        
+        try {
+          console.log(`[getStockTransactionHistory] ===== BONUS TABLE QUERY RESULTS =====`);
+          console.log(`[getStockTransactionHistory] Total bonus records fetched from database (client filtered): ${bonusRows.length}`);
+          console.log(`[getStockTransactionHistory] Requested clientId: ${numClientId}`);
+          console.log(`[getStockTransactionHistory] Requested security: "${stockName}" (normalized: "${normalizedStockName}")`);
+          console.log(`[getStockTransactionHistory] Bonus fetch strategy: WHERE ClientId = ${numClientId} (paginated), match CompanyName in JS`);
+          
+          // Log ALL bonuses for the requested client
+          const clientBonusesRaw = bonusRows.filter(row => {
+            const b = row.Bonus || row['Bonus'] || row;
+            const rawClientId = b.ClientId !== undefined ? b.ClientId : 
+                               (b.clientId !== undefined ? b.clientId : 
+                                (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null));
+            const clientId = rawClientId !== undefined && rawClientId !== null 
+              ? (typeof rawClientId === 'number' ? rawClientId : Number(rawClientId))
+              : null;
+            return clientId === numClientId || clientId === null;
+          });
+          
+          console.log(`[getStockTransactionHistory] Bonuses for client ${numClientId} (or null): ${clientBonusesRaw.length}`);
+          
+          // Log first 10 bonuses for this client
+          clientBonusesRaw.slice(0, 10).forEach((row, idx) => {
+            const b = row.Bonus || row['Bonus'] || row;
+            const companyName = b.CompanyName || b['CompanyName'] || b['Bonus.CompanyName'] || 'MISSING';
+            const normalized = normalizeName(companyName);
+            const matchesSecurity = normalized === normalizedStockName;
+            console.log(`[getStockTransactionHistory] Client Bonus ${idx + 1} (RAW from DB):`, {
+              CompanyName: companyName,
+              NormalizedCompanyName: normalized,
+              MatchesSecurity: matchesSecurity,
+              ClientId: b.ClientId || b['ClientId'] || b['Bonus.ClientId'] || 'MISSING',
+              ClientIdType: typeof (b.ClientId || b['ClientId'] || b['Bonus.ClientId']),
+              ExDate: b.ExDate || b['ExDate'] || b['Bonus.ExDate'] || 'MISSING',
+              BonusShare: b.BonusShare || b['BonusShare'] || b['Bonus.BonusShare'] || 'MISSING',
+              SecurityCode: b.SecurityCode || b['SecurityCode'] || b['Bonus.SecurityCode'] || 'MISSING',
+              allKeys: Object.keys(b)
+            });
+          });
+          
+          // Check for bonuses matching the security name
+          const securityBonusesRaw = bonusRows.filter(row => {
+            const b = row.Bonus || row['Bonus'] || row;
+            const companyName = b.CompanyName || b['CompanyName'] || b['Bonus.CompanyName'] || '';
+            const normalized = normalizeName(companyName);
+            return normalized === normalizedStockName;
+          });
+          
+          console.log(`[getStockTransactionHistory] Bonuses matching security "${stockName}": ${securityBonusesRaw.length}`);
+          securityBonusesRaw.slice(0, 5).forEach((row, idx) => {
+            const b = row.Bonus || row['Bonus'] || row;
+            const rawClientId = b.ClientId || b['ClientId'] || b['Bonus.ClientId'];
+            const clientId = rawClientId !== undefined && rawClientId !== null 
+              ? (typeof rawClientId === 'number' ? rawClientId : Number(rawClientId))
+              : null;
+            const matchesClient = clientId === null || clientId === numClientId;
+            console.log(`[getStockTransactionHistory] Security Bonus ${idx + 1}:`, {
+              CompanyName: b.CompanyName || b['CompanyName'] || 'MISSING',
+              ClientId: clientId,
+              MatchesClient: matchesClient,
+              ExDate: b.ExDate || b['ExDate'] || 'MISSING',
+              BonusShare: b.BonusShare || b['BonusShare'] || 'MISSING',
+              WillMatch: matchesClient
+            });
+          });
+          
+          // Debug: Log first bonus row structure to understand data format
+          if (bonusRows && bonusRows.length > 0) {
+            console.log(`[getStockTransactionHistory] Sample bonus row structure:`, {
+              rowKeys: Object.keys(bonusRows[0]),
+              sampleBonus: bonusRows[0].Bonus || bonusRows[0]['Bonus'] || bonusRows[0],
+              allKeys: Object.keys(bonusRows[0].Bonus || bonusRows[0]['Bonus'] || bonusRows[0])
+            });
+          }
+          console.log(`[getStockTransactionHistory] ==========================================`);
+          
+          // Filter bonuses that match the stock's Security-Name AND ClientId
+          let debugCounter = 0;
+          bonuses = bonusRows
+            .map((row) => {
+              const b = row.Bonus || row[bonusTableName] || row;
+              
+              // Try multiple ways to access BonusShare field (ZCQL may return it in different formats)
+              const bonusShareValue = b.BonusShare || 
+                                     b['BonusShare'] || 
+                                     b[`${bonusTableName}.BonusShare`] ||
+                                     b[`Bonus.BonusShare`] ||
+                                     b.bonus_share || 
+                                     b.bonusShare || 
+                                     b['bonus_share'] ||
+                                     (typeof b.BonusShare === 'number' ? b.BonusShare : 
+                                      (typeof b['BonusShare'] === 'number' ? b['BonusShare'] : 0));
+              
+              // Extract ClientId - handle various formats (number, string, null)
+              // ZCQL might return it as Bonus.ClientId or just ClientId
+              let extractedClientId = null;
+              const rawClientId = b.ClientId !== undefined ? b.ClientId : 
+                                 (b.clientId !== undefined ? b.clientId : 
+                                  (b[`${bonusTableName}.ClientId`] !== undefined ? b[`${bonusTableName}.ClientId`] :
+                                   (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null)));
+              
+              if (rawClientId !== undefined && rawClientId !== null) {
+                extractedClientId = typeof rawClientId === 'number' ? rawClientId : Number(rawClientId);
+                if (isNaN(extractedClientId)) {
+                  extractedClientId = null;
+                }
+              }
+              
+              // Extract CompanyName with more fallback options
+              const companyName = b.CompanyName || 
+                                  b['CompanyName'] || 
+                                  b[`${bonusTableName}.CompanyName`] || 
+                                  b['Bonus.CompanyName'] ||
+                                  b['Company-Name'] ||
+                                  b['company_name'] ||
+                                  b.companyName ||
+                                  '';
+              
+              // Extract ExDate with more fallback options
+              const exDate = b.ExDate || 
+                            b['ExDate'] || 
+                            b[`${bonusTableName}.ExDate`] || 
+                            b['Bonus.ExDate'] ||
+                            b['Ex-Date'] ||
+                            b['ex_date'] ||
+                            b.exDate ||
+                            '';
+              
+              const mappedBonus = {
+                companyName: companyName,
+                securityCode: b.SecurityCode || b['SecurityCode'] || b[`${bonusTableName}.SecurityCode`] || b['Bonus.SecurityCode'] || '',
+                series: b.Series || b.series,
+                bonusShare: bonusShareValue,
+                exDate: exDate,
+                clientId: extractedClientId,
+              };
+              
+              // Debug first few bonuses to see field extraction
+              if (bonusRows.indexOf(row) < 3) {
+                console.log(`[getStockTransactionHistory] Bonus mapping ${bonusRows.indexOf(row) + 1}:`, {
+                  rawRowKeys: Object.keys(row),
+                  bonusObjectKeys: Object.keys(b),
+                  extractedCompanyName: mappedBonus.companyName,
+                  extractedClientId: mappedBonus.clientId,
+                  extractedExDate: mappedBonus.exDate,
+                  rawClientId: rawClientId,
+                  rawClientIdType: typeof rawClientId
+                });
+              }
+              
+              // Debug: Log raw values for first bonus to verify data mapping
+              if (bonusRows.indexOf(row) === 0) {
+                console.log(`[getStockTransactionHistory] Raw bonus data mapping:`, {
+                  rowKeys: Object.keys(row),
+                  bonusObjectKeys: Object.keys(b),
+                  rawBonusShare_b_BonusShare: b.BonusShare,
+                  rawBonusShare_b_BracketBonusShare: b['BonusShare'],
+                  rawBonusShare_tablePrefix: b[`${bonusTableName}.BonusShare`],
+                  rawBonusShare_bonusPrefix: b[`Bonus.BonusShare`],
+                  rawBonusShare_bonus_share: b.bonus_share,
+                  rawBonusShare_bonusShare: b.bonusShare,
+                  bonusShareValue: bonusShareValue,
+                  mappedBonusShare: mappedBonus.bonusShare,
+                  rawExDate: b.ExDate || b['ExDate'],
+                  mappedExDate: mappedBonus.exDate,
+                  allBonusKeys: Object.keys(b).filter(k => k.toLowerCase().includes('bonus')),
+                  fullRow: JSON.stringify(row, null, 2)
+                });
+              }
+              
+              return mappedBonus;
+            })
+            .filter((bonus) => {
+              // Check if companyName exists and is not empty
+              if (!bonus.companyName || bonus.companyName.trim() === '') {
+                console.log(`[getStockTransactionHistory] Skipping bonus: companyName is empty`, {
+                  bonusKeys: Object.keys(bonus),
+                  bonusData: bonus
+                });
+                return false;
+              }
+              
+              const normalizedCompanyName = normalizeName(bonus.companyName);
+              let matchesStock = normalizedCompanyName === normalizedStockName;
+              
+              // Fallback: If exact match fails, try partial matching for common cases
+              // This handles cases like "HDFC BANK" vs "HDFC BANK LTD" or "HDFC BANK LIMITED"
+              if (!matchesStock && normalizedStockName && normalizedCompanyName) {
+                // Extract core company name (remove common suffixes)
+                const coreCompanyName = normalizedCompanyName
+                  .replace(/\b(LTD|LIMITED|INC|INCORPORATED|CORP|CORPORATION|PVT|PRIVATE)\b/g, '')
+                  .trim();
+                const coreStockName = normalizedStockName
+                  .replace(/\b(LTD|LIMITED|INC|INCORPORATED|CORP|CORPORATION|PVT|PRIVATE)\b/g, '')
+                  .trim();
+                
+                // Match if core names are the same (handles "HDFC BANK" vs "HDFC BANK LTD")
+                if (coreCompanyName === coreStockName && coreCompanyName.length > 0) {
+                  matchesStock = true;
+                  console.log(`[getStockTransactionHistory] Partial match: "${normalizedCompanyName}" matches "${normalizedStockName}" (core: "${coreCompanyName}")`);
+                }
+                
+                // Additional fallback: Check if one contains the other (for variations like "Astral Ltd." vs "Astral Ltd")
+                if (!matchesStock && (normalizedCompanyName.includes(normalizedStockName) || normalizedStockName.includes(normalizedCompanyName))) {
+                  // Only match if the shorter name is at least 5 characters (to avoid false matches)
+                  const shorter = normalizedCompanyName.length < normalizedStockName.length ? normalizedCompanyName : normalizedStockName;
+                  if (shorter.length >= 5) {
+                    matchesStock = true;
+                    console.log(`[getStockTransactionHistory] Contains match: "${normalizedCompanyName}" matches "${normalizedStockName}"`);
+                  }
+                }
+              }
+              
+              // Match by ClientId
+              // bonus.clientId is already a number or null from mapping, but handle undefined
+              const bonusClientId = bonus.clientId !== undefined ? bonus.clientId : null;
+              const matchesClient = bonusClientId === null || bonusClientId === numClientId;
+              
+              // Enhanced debugging for ALL bonuses for this client
+              if (bonusClientId === numClientId || bonusClientId === null) {
+                console.log(`[getStockTransactionHistory] Checking bonus for client ${numClientId}:`, {
+                  companyName: bonus.companyName,
+                  normalizedCompanyName,
+                  normalizedStockName,
+                  matchesStock,
+                  bonusClientId,
+                  selectedClientId: numClientId,
+                  matchesClient,
+                  willMatch: matchesStock && matchesClient,
+                  exDate: bonus.exDate,
+                  bonusShare: bonus.bonusShare
+                });
+              }
+              
+              // Both stock name and client ID must match
+              const matches = matchesStock && matchesClient;
+              
+              // Apply date filter if provided
+              // IMPORTANT: Always include bonuses that match stock and client
+              // Bonuses represent corporate actions and should be shown regardless of date filter
+              // The date filter is primarily for transactions, not bonuses
+              if (matches && (req.query.endDate || req.query.trandate_to)) {
+                const endDate = String(req.query.endDate || req.query.trandate_to).trim();
+                const bonusDate = bonus.exDate; // Use only Ex-Date
+                // Log but don't exclude - bonuses should always be shown if they match stock and client
+                if (bonusDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+                  if (bonusDate > endDate) {
+                    console.log(`[getStockTransactionHistory] Bonus date ${bonusDate} is after endDate ${endDate}, but including it anyway (bonuses should always be shown)`);
+                  }
+                }
+                // Always return true if matches stock and client, regardless of date
+              }
+              
+              if (matches) {
+                console.log(`[getStockTransactionHistory] ✅ MATCHED BONUS: ${bonus.companyName} (ClientId: ${bonusClientId}, Ex-Date: ${bonus.exDate}, BonusShare: ${bonus.bonusShare})`);
+              } else {
+                // Log why it didn't match for debugging
+                if (bonusClientId === numClientId || bonusClientId === null) {
+                  console.log(`[getStockTransactionHistory] ❌ BONUS NOT MATCHED: ${bonus.companyName}`, {
+                    reason: !matchesStock ? 'Company name mismatch' : 'ClientId mismatch',
+                    companyName: bonus.companyName,
+                    normalizedCompanyName,
+                    normalizedStockName,
+                    matchesStock,
+                    bonusClientId,
+                    numClientId,
+                    matchesClient
+                  });
+                }
+              }
+              return matches;
+            })
+            .sort((a, b) => {
+              // Sort by Ex-Date ascending (oldest first) for chronological merging
+              const dateA = a.exDate || '';
+              const dateB = b.exDate || '';
+              if (dateA && dateB) {
+                return dateA.localeCompare(dateB);
+              }
+              return 0;
+            });
+          
+          console.log(`[getStockTransactionHistory] Found ${bonuses.length} matching bonuses`);
+          
+          // Enhanced debugging: Always log bonus matching details
+          console.log(`[getStockTransactionHistory] ===== BONUS MATCHING DEBUG =====`);
+          console.log(`[getStockTransactionHistory] Requested stock: "${stockName}" (normalized: "${normalizedStockName}")`);
+          console.log(`[getStockTransactionHistory] Requested clientId: ${numClientId}`);
+          console.log(`[getStockTransactionHistory] Total bonus rows fetched: ${bonusRows.length}`);
+          console.log(`[getStockTransactionHistory] Matched bonuses: ${bonuses.length}`);
+          
+          // Log ALL bonuses for this client to see why they're not matching
+          const clientBonuses = bonusRows
+            .map((row) => {
+              const b = row.Bonus || row[bonusTableName] || row;
+              const rawClientId = b.ClientId !== undefined ? b.ClientId : 
+                                 (b.clientId !== undefined ? b.clientId : 
+                                  (b[`${bonusTableName}.ClientId`] !== undefined ? b[`${bonusTableName}.ClientId`] :
+                                   (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null)));
+              const clientId = rawClientId !== undefined && rawClientId !== null 
+                ? (typeof rawClientId === 'number' ? rawClientId : Number(rawClientId))
+                : null;
+              return {
+                companyName: b.CompanyName || b['CompanyName'] || b[`${bonusTableName}.CompanyName`] || b['Bonus.CompanyName'] || '',
+                clientId: clientId,
+                exDate: b.ExDate || b['ExDate'] || '',
+                bonusShare: b.BonusShare || b['BonusShare'] || 0
+              };
+            })
+            .filter(b => b.clientId === numClientId || b.clientId === null);
+          
+          console.log(`[getStockTransactionHistory] Bonuses for client ${numClientId}: ${clientBonuses.length}`);
+          clientBonuses.slice(0, 20).forEach((b, idx) => {
+            const normalized = normalizeName(b.companyName);
+            const matches = normalized === normalizedStockName;
+            console.log(`[getStockTransactionHistory] Client bonus ${idx + 1}:`, {
+              companyName: `"${b.companyName}"`,
+              normalized: `"${normalized}"`,
+              requestedNormalized: `"${normalizedStockName}"`,
+              matches,
+              clientId: b.clientId,
+              exDate: b.exDate,
+              bonusShare: b.bonusShare
+            });
+          });
+          
+          if (bonuses.length === 0 && bonusRows.length > 0) {
+            console.log(`[getStockTransactionHistory] ⚠️ WARNING: No bonuses matched!`);
+            console.log(`[getStockTransactionHistory] This could be due to:`);
+            console.log(`[getStockTransactionHistory] 1. Company name mismatch (normalized names don't match)`);
+            console.log(`[getStockTransactionHistory] 2. ClientId mismatch`);
+            console.log(`[getStockTransactionHistory] 3. Missing Ex-Date`);
+          }
+          console.log(`[getStockTransactionHistory] ===== END BONUS MATCHING DEBUG =====`);
+        } catch (bonusErr) {
+          console.error(`[getStockTransactionHistory] Error fetching bonuses:`, bonusErr);
+          console.error(`[getStockTransactionHistory] Bonus query that failed: ${bonusQuery}`);
+          console.error(`[getStockTransactionHistory] Error details:`, {
+            message: bonusErr.message,
+            code: bonusErr.code,
+            statusCode: bonusErr.statusCode
+          });
+          // Continue without bonuses if there's an error
+        }
+      } catch (err) {
+        console.error(`[getStockTransactionHistory] Error processing bonuses:`, err);
+        // Continue without bonuses if there's an error
+      }
+    }
+
+    // Helper function to determine if transaction is buy
+    const isBuyTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isBuy = type.startsWith('B') || type === 'BUY' || type === 'PURCHASE' || type.includes('BUY');
+      const isSQB = type === 'SQB';
+      const isOPI = type === 'OPI';
+      // Exclude dividends
+      const isDividend = type === 'DIO' || 
+                        type === 'DIVIDEND' || 
+                        type === 'DIVIDEND REINVEST' || 
+                        type === 'DIVIDEND REINVESTMENT' ||
+                        type === 'DIVIDEND RECEIVED' ||
+                        type.startsWith('DIVIDEND') ||
+                        type.includes('DIVIDEND');
+      return (isBuy || isSQB || isOPI) && !isDividend;
+    };
+
+    // Helper function to determine if transaction is sell
+    const isSellTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isSell = type.startsWith('S') || type === 'SELL' || type === 'SALE' || type.includes('SELL');
+      const isSQS = type === 'SQS';
+      const isOPO = type === 'OPO';
+      const isNF = type === 'NF-' || type.startsWith('NF-');
+      return isSell || isSQS || isOPO || isNF;
+    };
 
     // Sort transactions by date in ascending order (oldest first) for chronological journey
     transactions.sort((a, b) => {
@@ -1511,27 +2926,319 @@ exports.getStockTransactionHistory = async (req, res) => {
       return (a.rowid || 0) - (b.rowid || 0);
     });
 
+    // Merge bonuses with transactions chronologically
+    // Calculate holdings as we go and insert bonus rows with calculated bonus shares
+    // Implement FIFO (First In, First Out) for profit/loss calculation
+    const mergedTransactions = [];
+    let currentHoldings = 0; // Track holdings chronologically
+    
+    // FIFO queue: Array of buy lots, each with { quantity, buyPrice }
+    // Oldest buys are at the front of the array
+    const buyQueue = [];
+    
+    // Combine transactions and bonuses, then sort by date
+      const allEvents = [
+        ...transactions.map(t => ({ type: 'transaction', data: t, date: t.trandate })),
+        ...bonuses.map(b => {
+          // Ensure exDate is valid, use fallback if missing
+          const bonusDate = b.exDate && b.exDate.trim() !== '' ? b.exDate : '1900-01-01';
+          if (!b.exDate || b.exDate.trim() === '') {
+            console.log(`[getStockTransactionHistory] WARNING: Bonus has no ExDate, using fallback date:`, {
+              companyName: b.companyName,
+              clientId: b.clientId,
+              bonusShare: b.bonusShare
+            });
+          }
+          return {
+            type: 'bonus', 
+            data: b, 
+            date: bonusDate
+          };
+        })
+      ];
+      
+      console.log(`[getStockTransactionHistory] Total events to merge: ${allEvents.length} (${transactions.length} transactions, ${bonuses.length} bonuses)`);
+    
+    // Sort all events by date
+    allEvents.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      if (dateA !== dateB) {
+        return dateA - dateB;
+      }
+      // Transactions come before bonuses on the same date
+      if (a.type !== b.type) {
+        return a.type === 'transaction' ? -1 : 1;
+      }
+      return 0;
+    });
+
+    // Log all events for debugging
+    console.log(`[getStockTransactionHistory] Total events to process: ${allEvents.length} (${allEvents.filter(e => e.type === 'transaction').length} transactions, ${allEvents.filter(e => e.type === 'bonus').length} bonuses)`);
+    console.log(`[getStockTransactionHistory] Event dates:`, allEvents.map(e => ({
+      type: e.type,
+      date: e.date,
+      isTransaction: e.type === 'transaction' ? `${e.data.tranType} (${e.data.qty})` : 'N/A',
+      isBonus: e.type === 'bonus' ? `${e.data.companyName} (${e.data.exDate})` : 'N/A'
+    })).slice(0, 20)); // Show first 20 events
+    
+    // Process events chronologically
+    for (const event of allEvents) {
+      if (event.type === 'transaction') {
+        const transaction = event.data;
+        const qty = Math.abs(Number(transaction.qty) || 0);
+        // Use netrate for profit calculation, fallback to rate if netrate is not available
+        let price = Number(transaction.netrate) || Number(transaction.netRate) || Number(transaction.NETRATE) || 0;
+        if (price === 0) {
+          price = Number(transaction.rate) || 0;
+        }
+        // If still 0, calculate from netAmount as last resort
+        if (price === 0 && qty > 0 && transaction.netAmount && Math.abs(transaction.netAmount) > 0) {
+          price = Math.abs(transaction.netAmount) / qty;
+        }
+        const holdingsBefore = currentHoldings;
+        
+        // Update holdings based on transaction type
+        const isBuy = isBuyTransaction(transaction.tranType);
+        const isSell = isSellTransaction(transaction.tranType);
+        
+        let profitLoss = null; // Only set for SELL transactions
+        
+        if (isBuy) {
+          // BUY: Add to FIFO queue
+          if (qty > 0 && price > 0) {
+            buyQueue.push({
+              quantity: qty,
+              buyPrice: price
+            });
+            currentHoldings += qty;
+            console.log(`[getStockTransactionHistory] BUY: Added ${qty} @ ${price} to queue. Queue length: ${buyQueue.length}`);
+          }
+        } else if (isSell) {
+          // SELL: Consume from FIFO queue and calculate profit/loss
+          if (qty > 0 && price > 0) {
+            let remainingSellQty = qty;
+            let sellCostBasis = 0; // Cost basis for this specific sell
+            
+            // Consume from buy queue FIFO (oldest first)
+            while (remainingSellQty > 0 && buyQueue.length > 0) {
+              const oldestLot = buyQueue[0];
+              
+              if (oldestLot.quantity <= remainingSellQty) {
+                // Consume entire lot
+                const consumedQty = oldestLot.quantity;
+                const lotCost = consumedQty * oldestLot.buyPrice;
+                sellCostBasis += lotCost;
+                remainingSellQty -= consumedQty;
+                buyQueue.shift(); // Remove from queue
+                console.log(`[getStockTransactionHistory] SELL: Consumed entire lot ${consumedQty} @ ${oldestLot.buyPrice}, remaining sell qty: ${remainingSellQty}`);
+              } else {
+                // Consume partial lot
+                const consumedFromThisLot = remainingSellQty;
+                const lotCost = consumedFromThisLot * oldestLot.buyPrice;
+                sellCostBasis += lotCost;
+                oldestLot.quantity -= consumedFromThisLot;
+                remainingSellQty = 0;
+                console.log(`[getStockTransactionHistory] SELL: Consumed partial lot ${consumedFromThisLot} @ ${oldestLot.buyPrice} from lot of ${oldestLot.quantity + consumedFromThisLot}`);
+              }
+            }
+            
+            // If we still have remaining sell quantity after consuming all FIFO lots,
+            // those remaining shares come from bonus shares (0 cost basis)
+            // This means the remaining quantity has 0 cost, so profit = sell price * remaining qty
+            if (remainingSellQty > 0) {
+              console.log(`[getStockTransactionHistory] SELL: ${remainingSellQty} shares from bonus (0 cost basis)`);
+              // No additional cost basis for bonus shares (already 0)
+            }
+            
+            // Calculate profit/loss for this SELL transaction
+            const sellValue = qty * price;
+            profitLoss = sellValue - sellCostBasis;
+            
+            currentHoldings -= qty;
+            
+            console.log(`[getStockTransactionHistory] SELL: Qty=${qty}, Price=${price}, CostBasis=${sellCostBasis}, SellValue=${sellValue}, ProfitLoss=${profitLoss}`);
+          } else {
+            // If price is 0 or invalid, still reduce holdings but no profit calculation
+            currentHoldings -= qty;
+          }
+        }
+        // Dividends don't affect holdings or FIFO queue
+        
+        // Add profitLoss to transaction object (only for SELL)
+        if (isSell && profitLoss !== null) {
+          transaction.profitLoss = profitLoss;
+        }
+        
+        // Calculate Average Cost of All Holdings after this transaction
+        // Simple formula: WAP × HOLDING
+        // Match frontend calculation exactly: WAP = totalCostBasis / holdingAfter
+        let averageCostOfHoldings = 0;
+        if (currentHoldings > 0) {
+          // Calculate WAP exactly like frontend: totalCostBasis / holdingAfter
+          // holdingAfter = currentHoldings (sum of all lots in buyQueue)
+          const totalCostBasis = buyQueue.reduce((sum, lot) => sum + (lot.quantity * lot.buyPrice), 0);
+          const holdingAfter = buyQueue.reduce((sum, lot) => sum + lot.quantity, 0);
+          // WAP = totalCostBasis / holdingAfter (same as frontend)
+          const wap = holdingAfter > 0 ? (totalCostBasis / holdingAfter) : 0;
+          // Average Cost of Holdings = WAP × HOLDING
+          averageCostOfHoldings = currentHoldings * wap;
+        }
+        transaction.averageCostOfHoldings = averageCostOfHoldings;
+        
+        // Debug logging for all transactions to track holdings
+        console.log(`[getStockTransactionHistory] Transaction: ${transaction.trandate}, Type: ${transaction.tranType}, Qty: ${qty}, IsBuy: ${isBuy}, IsSell: ${isSell}, Holdings: ${holdingsBefore} -> ${currentHoldings}, ProfitLoss: ${profitLoss !== null ? profitLoss : 'N/A'}, AvgCostOfHoldings: ${averageCostOfHoldings.toFixed(2)}`);
+        
+        mergedTransactions.push(transaction);
+      } else if (event.type === 'bonus') {
+        const bonus = event.data;
+        const bonusDate = bonus.exDate; // Use only Ex-Date
+        
+        console.log(`[getStockTransactionHistory] ===== PROCESSING BONUS =====`);
+        console.log(`[getStockTransactionHistory] Bonus Date: ${bonusDate}`);
+        console.log(`[getStockTransactionHistory] Current Holdings at this point: ${currentHoldings}`);
+        console.log(`[getStockTransactionHistory] Transactions processed so far: ${mergedTransactions.length}`);
+        
+        // Get bonus share quantity directly from BonusShare field
+        // BonusShare now contains the total bonus quantity (no calculation needed)
+        // Try multiple ways to access the field in case ZCQL returns it differently
+        const rawBonusShare = bonus.bonusShare !== undefined && bonus.bonusShare !== null 
+          ? bonus.bonusShare 
+          : (bonus.BonusShare !== undefined && bonus.BonusShare !== null ? bonus.BonusShare : 0);
+        const bonusShare = Number(rawBonusShare);
+        const validBonusShare = !isNaN(bonusShare) && bonusShare >= 0 ? bonusShare : 0;
+        
+        // BonusShare is the total bonus quantity received
+        // No calculation needed - use it directly
+        const bonusSharesReceived = validBonusShare;
+        
+        // Debug logging for bonus calculation
+        console.log(`[getStockTransactionHistory] Bonus calculation details:`, {
+          exDate: bonusDate,
+          companyName: bonus.companyName,
+          currentHoldings,
+          rawBonusShare: rawBonusShare,
+          bonusShareValue: bonus.bonusShare,
+          BonusShareValue: bonus.BonusShare,
+          allBonusFields: Object.keys(bonus).filter(k => k.toLowerCase().includes('bonus')),
+          validBonusShare,
+          bonusSharesReceived,
+          calculation: `BonusShare = ${validBonusShare} (total bonus quantity)`
+        });
+        console.log(`[getStockTransactionHistory] ================================`);
+        
+        // Update holdings after bonus
+        const holdingsBeforeBonus = currentHoldings;
+        currentHoldings += bonusSharesReceived;
+        
+        // Add bonus shares to buyQueue with price 0 (to match frontend calculation)
+        if (bonusSharesReceived > 0) {
+          buyQueue.push({
+            quantity: bonusSharesReceived,
+            buyPrice: 0
+          });
+        }
+        
+        // Create bonus transaction row
+        // Ensure qty is always a number (0 if no bonus shares received)
+        const bonusQty = Number(bonusSharesReceived) || 0;
+        
+        const bonusTransaction = {
+          wsClientId: numClientId,
+          wsAccountCode: null,
+          trandate: bonus.exDate, // Use only Ex-Date
+          tranType: 'BONUS',
+          securityName: stockName,
+          securityCode: bonus.securityCode || null,
+          exchg: '-',
+          qty: bonusQty, // Always a number (total bonus quantity from BonusShare field)
+          rate: 0,
+          netAmount: 0,
+          rowid: 0,
+          isBonus: true,
+          bonusShare: validBonusShare,
+          holdingsBeforeBonus: holdingsBeforeBonus,
+          holdingsAfterBonus: currentHoldings
+        };
+        
+        console.log(`[getStockTransactionHistory] Bonus transaction created:`, {
+          date: bonusTransaction.trandate,
+          qty: bonusTransaction.qty,
+          type: bonusTransaction.tranType,
+          bonusShare: bonusTransaction.bonusShare,
+          holdingsBefore: bonusTransaction.holdingsBeforeBonus,
+          holdingsAfter: bonusTransaction.holdingsAfterBonus
+        });
+        
+        // Calculate Average Cost of All Holdings after bonus
+        // Simple formula: WAP × HOLDING
+        // Match frontend calculation exactly: WAP = totalCostBasis / holdingAfter
+        let averageCostOfHoldings = 0;
+        if (currentHoldings > 0) {
+          // Calculate WAP exactly like frontend: totalCostBasis / holdingAfter
+          // holdingAfter = currentHoldings (sum of all lots in buyQueue)
+          const totalCostBasis = buyQueue.reduce((sum, lot) => sum + (lot.quantity * lot.buyPrice), 0);
+          const holdingAfter = buyQueue.reduce((sum, lot) => sum + lot.quantity, 0);
+          // WAP = totalCostBasis / holdingAfter (same as frontend)
+          const wap = holdingAfter > 0 ? (totalCostBasis / holdingAfter) : 0;
+          // Average Cost of Holdings = WAP × HOLDING
+          averageCostOfHoldings = currentHoldings * wap;
+        }
+        bonusTransaction.averageCostOfHoldings = averageCostOfHoldings;
+        
+        // Always add bonus transaction, even if qty is 0
+        // This ensures the bonus event is visible in the transaction history
+        mergedTransactions.push(bonusTransaction);
+        
+        console.log(`[getStockTransactionHistory] Bonus added to transactions: ${bonusSharesReceived} shares (Holdings: ${holdingsBeforeBonus} -> ${currentHoldings}), AvgCostOfHoldings: ${averageCostOfHoldings.toFixed(2)}`);
+        console.log(`[getStockTransactionHistory] Total transactions after adding bonus: ${mergedTransactions.length}`);
+      }
+    }
+
+    // Use merged transactions instead of original transactions
+    const finalTransactions = mergedTransactions;
+
     // Log summary of transaction types - verify ALL transactions are included
-    const buyCount = transactions.filter(
+    const buyCount = finalTransactions.filter(
       (t) =>
         t.tranType && String(t.tranType).toUpperCase().trim().startsWith("B")
     ).length;
-    const sellCount = transactions.filter(
+    const sellCount = finalTransactions.filter(
       (t) =>
         t.tranType && String(t.tranType).toUpperCase().trim().startsWith("S")
     ).length;
-    const unknownCount = transactions.length - buyCount - sellCount;
+    const bonusCount = finalTransactions.filter(
+      (t) => t.isBonus === true || (t.tranType && String(t.tranType).toUpperCase().trim() === 'BONUS')
+    ).length;
+    
+    // Log bonus details for verification
+    const bonusTransactions = finalTransactions.filter(
+      (t) => t.isBonus === true || (t.tranType && String(t.tranType).toUpperCase().trim() === 'BONUS')
+    );
+    if (bonusCount > 0) {
+      console.log(`[getStockTransactionHistory] Bonus transactions details:`, bonusTransactions.map(b => ({
+        date: b.trandate,
+        qty: b.qty,
+        stockName: b.securityName,
+        bonusShare: b.bonusShare
+      })));
+    } else {
+      console.log(`[getStockTransactionHistory] WARNING: No bonus transactions found in final response!`);
+      console.log(`[getStockTransactionHistory] Total bonuses matched: ${bonuses.length}`);
+    }
+    const unknownCount = finalTransactions.length - buyCount - sellCount - bonusCount;
 
     console.log(
       `[getStockTransactionHistory] ===== FINAL TRANSACTION SUMMARY =====`
     );
     console.log(
-      `[getStockTransactionHistory] Total transactions returned: ${transactions.length}`
+      `[getStockTransactionHistory] Total transactions returned: ${finalTransactions.length}`
     );
     console.log(`[getStockTransactionHistory] BUY transactions: ${buyCount}`);
     console.log(`[getStockTransactionHistory] SELL transactions: ${sellCount}`);
+    console.log(`[getStockTransactionHistory] BONUS transactions: ${bonusCount}`);
     console.log(
-      `[getStockTransactionHistory] Unknown/Other transactions: ${unknownCount}`
+      `[getStockTransactionHistory] Other transactions (Dividend, Dividend Reinvest, Dividend Received, etc.): ${unknownCount}`
     );
     console.log(
       `[getStockTransactionHistory] Transactions sorted chronologically (oldest to newest)`
@@ -1540,14 +3247,7 @@ exports.getStockTransactionHistory = async (req, res) => {
       `[getStockTransactionHistory] ======================================`
     );
 
-    // Verify we're returning all transactions (no filtering)
-    if (transactions.length !== totalFetched) {
-      console.warn(
-        `[getStockTransactionHistory] WARNING: Transaction count mismatch! Fetched=${totalFetched}, Returned=${transactions.length}`
-      );
-    }
-
-    return res.status(200).json(transactions);
+    return res.status(200).json(finalTransactions);
   } catch (err) {
     console.error("[getStockTransactionHistory] Error:", err);
     return res.status(500).json({
@@ -1607,8 +3307,8 @@ exports.getWeightedAverageCost = async (req, res) => {
         stockName: name,
         stockCode: code,
         totalQuantity: fifo.holdingQty,
-        remainingCost: Number(fifo.remainingCost.toFixed(2)),
-        weightedAverageCost: Number(fifo.avgCost.toFixed(2)),
+        remainingCost: fifo.remainingCost, // Use full precision for calculations
+        weightedAverageCost: fifo.avgCost, // Use full precision for calculations
       });
     }
 
@@ -1620,6 +3320,506 @@ exports.getWeightedAverageCost = async (req, res) => {
   } catch (err) {
     return res.status(500).json({
       message: err.message,
+    });
+  }
+};
+
+// Test function to check for specific bonus
+exports.checkBonus = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+
+    const clientId = parseInt(req.query.clientId || req.params.clientId, 10);
+    const companyName = req.query.companyName || req.params.companyName;
+
+    if (!clientId || !companyName) {
+      return res.status(400).json({ 
+        message: "Both clientId and companyName are required",
+        example: "/api/stocks/check-bonus?clientId=8800046&companyName=Astral Ltd."
+      });
+    }
+
+    const zcql = app.zcql();
+    const bonusTableName = 'Bonus';
+    const bonusQuery = `SELECT * FROM ${bonusTableName}`;
+
+    console.log(`[checkBonus] Checking for clientId: ${clientId}, companyName: "${companyName}"`);
+
+    const bonusRows = await zcql.executeZCQLQuery(bonusQuery, []);
+    console.log(`[checkBonus] Total bonus records in database: ${bonusRows.length}`);
+
+    // Normalize function
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return String(name)
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\bLIMITED\b/g, 'LTD')
+        .replace(/\bINCORPORATED\b/g, 'INC')
+        .replace(/\bCORPORATION\b/g, 'CORP')
+        .replace(/\bPRIVATE\b/g, 'PVT')
+        .replace(/\s+/g, ' ');
+    };
+
+    const normalizedCompanyName = normalizeName(companyName);
+    console.log(`[checkBonus] Normalized company name: "${normalizedCompanyName}"`);
+
+    const matchingBonuses = [];
+
+    for (const row of bonusRows) {
+      const b = row.Bonus || row[bonusTableName] || row;
+      
+      // Extract ClientId
+      const rawClientId = b.ClientId !== undefined ? b.ClientId :
+                         (b.clientId !== undefined ? b.clientId :
+                          (b[`${bonusTableName}.ClientId`] !== undefined ? b[`${bonusTableName}.ClientId`] :
+                           (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null)));
+      
+      const bonusClientId = rawClientId !== undefined && rawClientId !== null
+        ? (typeof rawClientId === 'number' ? rawClientId : Number(rawClientId))
+        : null;
+
+      // Extract CompanyName
+      const bonusCompanyName = b.CompanyName || b['CompanyName'] || b[`${bonusTableName}.CompanyName`] || b['Bonus.CompanyName'] || '';
+      const normalizedBonusName = normalizeName(bonusCompanyName);
+
+      // Check if matches
+      const matchesClient = bonusClientId === null || bonusClientId === clientId;
+      const matchesCompany = normalizedBonusName === normalizedCompanyName;
+
+      if (matchesClient && matchesCompany) {
+        const bonusShare = b.BonusShare || b['BonusShare'] || b[`${bonusTableName}.BonusShare`] || b['Bonus.BonusShare'] || 0;
+        const exDate = b.ExDate || b['ExDate'] || b[`${bonusTableName}.ExDate`] || b['Bonus.ExDate'] || '';
+        const securityCode = b.SecurityCode || b['SecurityCode'] || b[`${bonusTableName}.SecurityCode`] || b['Bonus.SecurityCode'] || '';
+
+        matchingBonuses.push({
+          ROWID: b.ROWID || b.rowid,
+          ClientId: bonusClientId,
+          CompanyName: bonusCompanyName,
+          SecurityCode: securityCode,
+          ExDate: exDate,
+          BonusShare: bonusShare,
+          wsAccountCode: b.wsAccountCode || b['wsAccountCode'] || null,
+          rawData: {
+            rawClientId,
+            rawClientIdType: typeof rawClientId,
+            normalizedBonusName,
+            normalizedCompanyName,
+            matchesClient,
+            matchesCompany
+          }
+        });
+      }
+    }
+
+    console.log(`[checkBonus] Found ${matchingBonuses.length} matching bonus(es)`);
+
+    return res.status(200).json({
+      clientId,
+      companyName,
+      normalizedCompanyName,
+      totalBonusesInDB: bonusRows.length,
+      matchingBonuses: matchingBonuses.length,
+      bonuses: matchingBonuses
+    });
+
+  } catch (err) {
+    console.error(`[checkBonus] Error:`, err);
+    return res.status(500).json({ message: err.message, error: err.toString() });
+  }
+};
+
+// Export transactions and bonuses to Excel for a client
+exports.exportClientTransactionsToExcel = async (req, res) => {
+  try {
+    const app = req.catalystApp;
+    if (!app) {
+      return res.status(500).json({ message: "Catalyst app context missing" });
+    }
+
+    const wsAccountCode = req.query.wsAccountCode || req.query.accountCode;
+    const securityName = req.query.securityName || req.query.stockName;
+    
+    if (!wsAccountCode) {
+      return res.status(400).json({ message: "wsAccountCode is required" });
+    }
+    
+    if (!securityName) {
+      return res.status(400).json({ message: "securityName is required" });
+    }
+
+    const zcql = app.zcql();
+    const XLSX = require('xlsx');
+
+    console.log(`[exportClientTransactionsToExcel] Starting export for wsAccountCode: ${wsAccountCode}, securityName: ${securityName}`);
+
+    // Step 1: Get clientId from wsAccountCode
+    const clientIdsQuery = `SELECT * FROM clientIds WHERE clientIds.ws_account_code = '${String(wsAccountCode).trim().replace(/'/g, "''")}' LIMIT 1`;
+    const clientIdsRows = await zcql.executeZCQLQuery(clientIdsQuery, []);
+    
+    if (!clientIdsRows || clientIdsRows.length === 0) {
+      return res.status(404).json({ message: `No client found for wsAccountCode: ${wsAccountCode}` });
+    }
+
+    const clientRow = clientIdsRows[0].clientIds || clientIdsRows[0];
+    const clientId = Number(clientRow.clientId || clientRow.ClientId || clientRow.client_id);
+    
+    if (!clientId || isNaN(clientId)) {
+      return res.status(400).json({ message: `Invalid clientId for wsAccountCode: ${wsAccountCode}` });
+    }
+
+    console.log(`[exportClientTransactionsToExcel] Found clientId: ${clientId} for wsAccountCode: ${wsAccountCode}`);
+
+    // Helper function for name normalization
+    const normalizeName = (name) => {
+      if (!name) return '';
+      return String(name)
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, ' ')
+        .replace(/[^\w\s]/g, '')
+        .replace(/\bLIMITED\b/g, 'LTD')
+        .replace(/\bINCORPORATED\b/g, 'INC')
+        .replace(/\bCORPORATION\b/g, 'CORP')
+        .replace(/\bPRIVATE\b/g, 'PVT')
+        .replace(/\s+/g, ' ');
+    };
+
+    // Step 2: Fetch bonuses for this client and security
+    const bonusTableName = 'Bonus';
+    const bonusBatchSize = 250;
+    let bonusOffset = 0;
+    let bonusHasMore = true;
+    const allBonusRows = [];
+    const normalizedSecurityName = normalizeName(securityName);
+
+    while (bonusHasMore) {
+      const bonusQuery = `SELECT * FROM ${bonusTableName} WHERE ${bonusTableName}.ClientId = ${clientId} LIMIT ${bonusBatchSize} OFFSET ${bonusOffset}`;
+      const rows = await zcql.executeZCQLQuery(bonusQuery, []);
+      
+      if (!rows || rows.length === 0) {
+        bonusHasMore = false;
+        break;
+      }
+      
+      // Filter bonuses that match the security name
+      rows.forEach(row => {
+        const b = row.Bonus || row[bonusTableName] || row;
+        const bonusCompanyName = b.CompanyName || b['CompanyName'] || b['Bonus.CompanyName'] || '';
+        const normalizedBonusName = normalizeName(bonusCompanyName);
+        
+        // Match by normalized name or exact name
+        if (normalizedBonusName === normalizedSecurityName || 
+            bonusCompanyName.trim() === securityName.trim()) {
+          allBonusRows.push(row);
+        }
+      });
+      
+      if (rows.length < bonusBatchSize) {
+        bonusHasMore = false;
+      } else {
+        bonusOffset += bonusBatchSize;
+        if (bonusOffset > 100000) bonusHasMore = false;
+      }
+    }
+
+    if (allBonusRows.length === 0) {
+      return res.status(404).json({ 
+        message: `No bonus records found for client ${clientId} (wsAccountCode: ${wsAccountCode}) and security: ${securityName}` 
+      });
+    }
+
+    console.log(`[exportClientTransactionsToExcel] Found ${allBonusRows.length} bonus records for security: ${securityName}`);
+
+    const isBuyTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isBuy = type.startsWith('B') || type === 'BUY' || type === 'PURCHASE' || type.includes('BUY');
+      const isSQB = type === 'SQB';
+      const isOPI = type === 'OPI';
+      const isDividend = type === 'DIO' || 
+                        type === 'DIVIDEND' || 
+                        type === 'DIVIDEND REINVEST' || 
+                        type === 'DIVIDEND REINVESTMENT' ||
+                        type === 'DIVIDEND RECEIVED' ||
+                        type.startsWith('DIVIDEND') ||
+                        type.includes('DIVIDEND');
+      return (isBuy || isSQB || isOPI) && !isDividend;
+    };
+
+    const isSellTransaction = (tranType) => {
+      if (!tranType) return false;
+      const type = String(tranType).toUpperCase().trim();
+      const isSell = type.startsWith('S') || type === 'SELL' || type === 'SALE' || type.includes('SELL');
+      const isSQS = type === 'SQS';
+      const isOPO = type === 'OPO';
+      const isNF = type === 'NF-' || type.startsWith('NF-');
+      return isSell || isSQS || isOPO || isNF;
+    };
+
+    // Step 3: Process transactions and bonuses for the specified security
+    const tableName = 'Transaction';
+    const allExcelRows = [];
+
+    console.log(`[exportClientTransactionsToExcel] Processing security: ${securityName}`);
+    
+    // Fetch all transactions for this security
+    const escapedStockName = String(securityName).trim().replace(/'/g, "''");
+    const whereClause = `WHERE ${tableName}.WS_client_id = ${clientId} AND ${tableName}.Security_Name = '${escapedStockName}'`;
+    
+    const allTransactions = [];
+    let txOffset = 0;
+    let txHasMore = true;
+    
+    while (txHasMore) {
+      const txQuery = `SELECT * FROM ${tableName} ${whereClause} ORDER BY ${tableName}.TRANDATE ASC, ${tableName}.ROWID ASC LIMIT 250 OFFSET ${txOffset}`;
+      const txRows = await zcql.executeZCQLQuery(txQuery, []);
+      
+      if (!txRows || txRows.length === 0) {
+        txHasMore = false;
+        break;
+      }
+      
+      // Flatten and format transactions
+      txRows.forEach(row => {
+        const t = row.Transaction || row[tableName] || row;
+        const flat = flattenRow(t);
+        const qty = toNumber(flat.QTY || flat.qty || flat.Qty);
+        const netAmount = toNumber(flat.Net_Amount || flat.net_amount || flat.netAmount || flat.NetAmount);
+        
+        // Extract netrate first (for profit calculation), then fallback to rate
+        let netrate = toNumber(flat.NETRATE || flat.netrate || flat.netRate || flat.NetRate);
+        let rate = toNumber(flat.RATE || flat.rate || flat.Rate || flat.Price || flat.price || flat.PRICE);
+        
+        // Use netrate if available, otherwise use rate
+        let price = netrate > 0 ? netrate : rate;
+        
+        // If price is still 0 or missing, calculate from netAmount / qty
+        if ((price === 0 || isNaN(price)) && qty > 0 && netAmount > 0) {
+          price = netAmount / qty;
+        }
+        
+        allTransactions.push({
+          trandate: flat.TRANDATE || flat.trandate || '',
+          tranType: flat.Tran_Type || flat.tran_type || flat.TRAN_TYPE || '',
+          securityName: flat.Security_Name || flat.security_name || securityName,
+          securityCode: flat.Security_code || flat.security_code || '',
+          qty: qty,
+          rate: rate,
+          netrate: netrate,
+          netAmount: netAmount,
+          rowid: flat.ROWID || flat.rowid || 0
+        });
+      });
+      
+      if (txRows.length < 250) {
+        txHasMore = false;
+      } else {
+        txOffset += 250;
+      }
+    }
+
+    // Format matching bonuses
+    const matchingBonuses = [];
+    
+    allBonusRows.forEach(row => {
+      const b = row.Bonus || row[bonusTableName] || row;
+      const bonusCompanyName = b.CompanyName || b['CompanyName'] || b['Bonus.CompanyName'] || '';
+      matchingBonuses.push({
+        exDate: b.ExDate || b['ExDate'] || b['Bonus.ExDate'] || '',
+        companyName: bonusCompanyName,
+        bonusShare: toNumber(b.BonusShare || b['BonusShare'] || b['Bonus.BonusShare'] || 0),
+        securityCode: b.SecurityCode || b['SecurityCode'] || b['Bonus.SecurityCode'] || ''
+      });
+    });
+
+      // Sort transactions by date
+      allTransactions.sort((a, b) => {
+        const dateA = a.trandate ? new Date(a.trandate).getTime() : 0;
+        const dateB = b.trandate ? new Date(b.trandate).getTime() : 0;
+        if (dateA !== dateB) return dateA - dateB;
+        return (a.rowid || 0) - (b.rowid || 0);
+      });
+
+      // Merge transactions and bonuses chronologically
+      const allEvents = [
+        ...allTransactions.map(t => ({ type: 'transaction', data: t, date: t.trandate })),
+        ...matchingBonuses.map(b => ({ 
+          type: 'bonus', 
+          data: b, 
+          date: b.exDate && b.exDate.trim() ? b.exDate : '1900-01-01'
+        }))
+      ];
+
+      allEvents.sort((a, b) => {
+        const dateA = a.date ? new Date(a.date).getTime() : 0;
+        const dateB = b.date ? new Date(b.date).getTime() : 0;
+        if (dateA !== dateB) return dateA - dateB;
+        return a.type === 'transaction' ? -1 : 1; // Transactions before bonuses on same date
+      });
+
+      // Process events chronologically and calculate holdings, WAP, etc.
+      let currentHoldings = 0;
+      const buyQueue = []; // FIFO queue: [{ quantity, buyPrice }]
+
+      for (const event of allEvents) {
+        if (event.type === 'transaction') {
+          const tx = event.data;
+          const qty = Math.abs(tx.qty || 0);
+          // Use netrate for profit calculation, fallback to rate if netrate is not available
+          let price = Math.abs(tx.netrate || tx.netRate || tx.NETRATE || 0);
+          if (price === 0) {
+            price = Math.abs(tx.rate || 0);
+          }
+          // If still 0, try to calculate from netAmount as last resort
+          if (price === 0 && qty > 0 && tx.netAmount && Math.abs(tx.netAmount) > 0) {
+            price = Math.abs(tx.netAmount) / qty;
+          }
+          
+          const holdingsBefore = currentHoldings;
+          const isBuy = isBuyTransaction(tx.tranType);
+          const isSell = isSellTransaction(tx.tranType);
+          let profitLoss = null;
+          let wap = 0;
+          let avgCostOfHoldings = 0;
+
+          if (isBuy && qty > 0) {
+            // For buy transactions, use price if available, otherwise calculate from netAmount
+            const buyPrice = price > 0 ? price : (qty > 0 && tx.netAmount && Math.abs(tx.netAmount) > 0 ? Math.abs(tx.netAmount) / qty : 0);
+            if (buyPrice > 0) {
+              buyQueue.push({ quantity: qty, buyPrice: buyPrice });
+              currentHoldings += qty;
+            } else if (qty > 0) {
+              // If no price but we have quantity, still add to holdings (might be OPI with 0 cost)
+              // Don't add to buyQueue if price is 0 (no cost basis)
+              currentHoldings += qty;
+            }
+          } else if (isSell && qty > 0) {
+            // For sell transactions, calculate profit/loss
+            let remainingSellQty = qty;
+            let sellCostBasis = 0;
+
+            // Consume from FIFO queue
+            while (remainingSellQty > 0 && buyQueue.length > 0) {
+              const oldestLot = buyQueue[0];
+              
+              if (oldestLot.quantity <= remainingSellQty) {
+                const consumedQty = oldestLot.quantity;
+                sellCostBasis += consumedQty * oldestLot.buyPrice;
+                remainingSellQty -= consumedQty;
+                buyQueue.shift();
+              } else {
+                const consumedFromThisLot = remainingSellQty;
+                sellCostBasis += consumedFromThisLot * oldestLot.buyPrice;
+                oldestLot.quantity -= consumedFromThisLot;
+                remainingSellQty = 0;
+              }
+            }
+
+            // Calculate sell value
+            const sellValue = price > 0 ? (qty * price) : Math.abs(tx.netAmount || 0);
+            profitLoss = sellValue - sellCostBasis;
+            currentHoldings -= qty;
+            if (currentHoldings < 0) currentHoldings = 0; // Safety check
+          } else {
+            // Other transaction types (dividends, etc.) - don't affect holdings
+            // But still show in the export
+          }
+
+          // Calculate WAP and Avg Cost of Holdings (always calculate if we have holdings)
+          if (currentHoldings > 0) {
+            const totalCostBasis = buyQueue.reduce((sum, lot) => sum + (lot.quantity * lot.buyPrice), 0);
+            const holdingAfter = buyQueue.reduce((sum, lot) => sum + lot.quantity, 0);
+            // WAP = total cost basis / total holdings (including bonus shares)
+            wap = currentHoldings > 0 ? (totalCostBasis / currentHoldings) : 0;
+            avgCostOfHoldings = currentHoldings * wap;
+          }
+
+          // Calculate display price (use calculated price if original was 0)
+          const displayPrice = price > 0 ? price : (qty > 0 && tx.netAmount ? Math.abs(tx.netAmount) / qty : 0);
+
+          // Add to Excel rows
+          allExcelRows.push({
+            DATE: tx.trandate || '',
+            TYPE: tx.tranType || '',
+            'STOCK NAME': tx.securityName || securityName,
+            QUANTITY: qty,
+            PRICE: displayPrice > 0 ? (Math.floor(displayPrice * 100) / 100).toFixed(2) : '0.00',
+            'TOTAL AMOUNT': Math.abs(tx.netAmount || (qty * displayPrice)),
+            HOLDING: currentHoldings,
+            WAP: wap > 0 ? (Math.floor(wap * 100) / 100).toFixed(2) : '-',
+            'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? (Math.floor(avgCostOfHoldings * 100) / 100).toFixed(2) : '-',
+            'P/L': profitLoss !== null ? (Math.floor(profitLoss * 100) / 100).toFixed(2) : '-'
+          });
+
+        } else if (event.type === 'bonus') {
+          const bonus = event.data;
+          const bonusShare = Math.abs(bonus.bonusShare || 0);
+          
+          if (bonusShare > 0) {
+            // Bonus shares have 0 cost, so WAP decreases
+            currentHoldings += bonusShare;
+            
+            // Recalculate WAP (cost basis stays same, but spread over more shares)
+            let wap = 0;
+            let avgCostOfHoldings = 0;
+            if (currentHoldings > 0) {
+              const totalCostBasis = buyQueue.reduce((sum, lot) => sum + (lot.quantity * lot.buyPrice), 0);
+              wap = totalCostBasis / currentHoldings;
+              avgCostOfHoldings = currentHoldings * wap;
+            }
+
+            allExcelRows.push({
+              DATE: bonus.exDate || '',
+              TYPE: 'BONUS',
+              'STOCK NAME': bonus.companyName || securityName,
+              QUANTITY: bonusShare,
+              PRICE: 0,
+              'TOTAL AMOUNT': 0,
+              HOLDING: currentHoldings,
+              WAP: wap > 0 ? (Math.floor(wap * 100) / 100).toFixed(2) : '-',
+              'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? (Math.floor(avgCostOfHoldings * 100) / 100).toFixed(2) : '-',
+              'P/L': '-'
+            });
+          }
+        }
+      }
+
+    if (allExcelRows.length === 0) {
+      return res.status(404).json({ message: `No transaction data found for client ${clientId}` });
+    }
+
+    // Step 4: Generate Excel file
+    const worksheet = XLSX.utils.json_to_sheet(allExcelRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Transactions');
+
+    // Generate buffer
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set response headers for file download
+    const safeSecurityName = String(securityName).replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+    const fileName = `client_${wsAccountCode}_${safeSecurityName}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', excelBuffer.length);
+
+    console.log(`[exportClientTransactionsToExcel] Generated Excel with ${allExcelRows.length} rows for client ${clientId}`);
+
+    // Send the file
+    res.send(excelBuffer);
+
+  } catch (err) {
+    console.error(`[exportClientTransactionsToExcel] Error:`, err);
+    return res.status(500).json({ 
+      message: err.message, 
+      error: err.toString(),
+      stack: err.stack 
     });
   }
 };

@@ -73,35 +73,56 @@
 /* Summary Cards */
 .summary-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-  padding: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+  padding: 20px 16px;
 }
 
 .summary-card {
-  background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  transition: all 0.2s ease;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.summary-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.05), transparent);
 }
 
 .summary-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08), 0 3px 8px rgba(0, 0, 0, 0.06);
+  border-color: #d1d5db;
 }
 
 .summary-card-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .summary-card-icon.current-holding {
@@ -110,58 +131,76 @@
 }
 
 .summary-card-icon.total-buy {
-  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
 
 .summary-card-icon.total-sell {
-  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
 }
 
 .summary-card-icon.profit {
-  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
 
 .summary-card-icon.loss {
-  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
 }
 
-.summary-card-content {
-  flex: 1;
+.summary-card-icon.weighted-avg {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
 }
 
-.summary-card-content h4 {
-  font-size: 14px;
-  font-weight: 500;
-  color: #718096;
-  margin: 0 0 8px 0;
+.summary-card-header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.summary-card-header h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  line-height: 1.4;
 }
 
 .summary-value {
   font-size: 24px;
   font-weight: 700;
-  color: #1a202c;
-  margin: 0 0 4px 0;
+  color: #111827;
+  margin: 0;
   line-height: 1.2;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  letter-spacing: -0.5px;
+  word-break: break-word;
+  text-align: left;
+  width: 100%;
 }
 
 .summary-value.positive {
-  color: #38a169;
+  color: #059669;
 }
 
 .summary-value.negative {
-  color: #e53e3e;
+  color: #dc2626;
 }
 
 .summary-label {
   font-size: 12px;
-  color: #718096;
+  color: #6b7280;
   margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 /* Transactions Section */
@@ -232,6 +271,17 @@
   background: #ffe5e5;
 }
 
+.transactions-table tbody tr.bonus-row {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
+  border-left: 4px solid #6366f1;
+  position: relative;
+}
+
+.transactions-table tbody tr.bonus-row:hover {
+  background: linear-gradient(135deg, #e0e7ff 0%, #d4d9ff 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+}
+
 .transactions-table td {
   padding: 12px 16px;
   font-size: 14px;
@@ -265,6 +315,37 @@
   color: #742a2a;
 }
 
+.trade-type-badge.bonus {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.bonus-badge-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.bonus-ratio-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .stock-name-cell {
   font-weight: 600;
 }
@@ -286,6 +367,16 @@
   font-family: 'Courier New', monospace;
 }
 
+.number-cell.profit {
+  color: #059669;
+  font-weight: 600;
+}
+
+.number-cell.loss {
+  color: #dc2626;
+  font-weight: 600;
+}
+
 .buy-amount {
   color: #22543d;
   font-weight: 600;
@@ -294,6 +385,107 @@
 .sell-amount {
   color: #742a2a;
   font-weight: 600;
+}
+
+/* Holding Status Column */
+.holding-status-cell {
+  min-width: 180px;
+  padding: 8px 12px !important;
+}
+
+.holding-status-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.holding-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.holding-label {
+  color: #6b7280;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.holding-value {
+  color: #111827;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  text-align: right;
+  min-width: 70px;
+}
+
+.holding-value.profit {
+  color: #059669;
+}
+
+.holding-value.loss {
+  color: #dc2626;
+}
+
+/* Bonus-specific styles */
+.bonus-quantity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 100px;
+}
+
+.bonus-quantity .bonus-qty-positive {
+  color: #6366f1;
+  font-size: 15px;
+  font-weight: 700;
+  display: block;
+}
+
+.bonus-quantity .bonus-qty-zero {
+  color: #94a3b8;
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+
+.bonus-zero-note {
+  font-size: 10px;
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 400;
+  text-align: right;
+  line-height: 1.2;
+  max-width: 120px;
+}
+
+.bonus-holdings-info {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  font-weight: 400;
+}
+
+.bonus-holdings-info::before {
+  content: "📊 ";
+  margin-right: 2px;
+}
+
+.bonus-qty {
+  font-weight: 600;
+}
+
+.bonus-na {
+  color: #94a3b8;
+  font-style: italic;
+  font-size: 13px;
 }
 
 /* Loading and Error States */
@@ -351,6 +543,14 @@
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  .summary-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 18px;
+    padding: 20px 16px;
+  }
+}
+
 @media (max-width: 768px) {
   .modal-content {
     max-width: 100%;
@@ -360,7 +560,22 @@
 
   .summary-cards-grid {
     grid-template-columns: 1fr;
-    padding: 16px;
+    gap: 14px;
+    padding: 16px 14px;
+  }
+
+  .summary-card {
+    padding: 18px;
+    gap: 14px;
+  }
+
+  .summary-card-icon {
+    width: 48px;
+    height: 48px;
+  }
+
+  .summary-value {
+    font-size: 22px;
   }
 
   .transactions-section {
