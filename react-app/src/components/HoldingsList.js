@@ -3,10 +3,39 @@ import { Package, Eye } from 'lucide-react';
 import './HoldingsList.css';
 
 const HoldingsList = ({ holdings, loading, onViewStock }) => {
+  const truncateTo2Decimals = (num) => {
+    if (typeof num !== 'number') {
+      const parsed = Number(num);
+      if (Number.isNaN(parsed)) return num;
+      num = parsed;
+    }
+    return Math.trunc(num * 100) / 100;
+  };
+
   const formatNumber = (value) => {
     if (!value && value !== 0) return '0';
-    return new Intl.NumberFormat('en-IN').format(value);
+    const truncated = truncateTo2Decimals(value);
+    return new Intl.NumberFormat('en-IN', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
+
+  const formatCurrency = (value) => {
+    if (!value && value !== 0) return '₹0';
+    const truncated = truncateTo2Decimals(value);
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
+  };
+
+  // Only show active holdings where currentHolding > 0
+  const activeHoldings = Array.isArray(holdings)
+    ? holdings.filter((h) => (Number(h.currentHolding) || 0) > 0)
+    : [];
 
   if (loading) {
     return (
@@ -19,7 +48,7 @@ const HoldingsList = ({ holdings, loading, onViewStock }) => {
     );
   }
 
-  if (!holdings || holdings.length === 0) {
+  if (!activeHoldings || activeHoldings.length === 0) {
     return (
       <div className="holdings-list">
         <div className="no-holdings">
@@ -34,45 +63,54 @@ const HoldingsList = ({ holdings, loading, onViewStock }) => {
   return (
     <div className="holdings-list">
       <div className="holdings-header">
-        <h2>Stock Holdings ({holdings.length})</h2>
-        <p className="holdings-subtitle">Click "View" to see detailed transaction history</p>
+        <h2>Active Stock Holdings ({activeHoldings.length})</h2>
+        <p className="holdings-subtitle">
+          Showing only stocks with current holdings greater than 0. Click "View" to see detailed
+          transaction history.
+        </p>
       </div>
 
-      <div className="holdings-grid">
-        {holdings.map((holding, index) => (
-          <div key={index} className="holding-card">
-            <div className="holding-card-header">
-              <div className="stock-info">
-                <h3 className="stock-name">{holding.stockName}</h3>
-                {holding.stockCode && (
-                  <p className="stock-code">({holding.stockCode})</p>
-                )}
-              </div>
-            </div>
-
-            <div className="holding-card-body">
-              <div className="holding-metric">
-                <span className="metric-label">Current Holding:</span>
-                <span className={`metric-value ${holding.currentHolding <= 0 ? 'zero-holding' : ''}`}>
+      <div className="holdings-table-wrapper">
+        <table className="holdings-table">
+          <thead>
+            <tr>
+              <th>Stock Name</th>
+              <th>Code</th>
+              <th>Current Holding</th>
+              <th>Holding Value</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {activeHoldings.map((holding, index) => (
+              <tr key={index}>
+                <td>
+                  <div className="stock-info">
+                    <span className="stock-name">{holding.stockName}</span>
+                  </div>
+                </td>
+                <td className="stock-code-cell">
+                  {holding.stockCode ? <span className="stock-code">({holding.stockCode})</span> : '-'}
+                </td>
+                <td className="number-cell">
                   {formatNumber(holding.currentHolding)}
-                </span>
-                {holding.currentHolding <= 0 && (
-                  <span className="fully-sold-badge">Fully Sold</span>
-                )}
-              </div>
-            </div>
-
-            <div className="holding-card-footer">
-              <button
-                className="view-button"
-                onClick={() => onViewStock(holding)}
-              >
-                <Eye size={16} />
-                View Details
-              </button>
-            </div>
-          </div>
-        ))}
+                </td>
+                <td className="number-cell">
+                  {formatCurrency(holding.holdingValue || 0)}
+                </td>
+                <td>
+                  <button
+                    className="view-button"
+                    onClick={() => onViewStock(holding)}
+                  >
+                    <Eye size={16} />
+                    View Details
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

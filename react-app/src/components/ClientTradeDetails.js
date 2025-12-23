@@ -3,13 +3,24 @@ import { TrendingUp, TrendingDown, Calendar, DollarSign, Package, FileText } fro
 import './ClientTradeDetails.css';
 
 const ClientTradeDetails = ({ trades, loading, clientId, endDate }) => {
+  const truncateTo2Decimals = (num) => {
+    if (typeof num !== 'number') {
+      const parsed = Number(num);
+      if (Number.isNaN(parsed)) return num;
+      num = parsed;
+    }
+    return Math.trunc(num * 100) / 100;
+  };
+
   const formatCurrency = (value) => {
     if (!value && value !== 0) return '-';
+    const truncated = truncateTo2Decimals(value);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 2,
-    }).format(value);
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   const formatDate = (dateString) => {
@@ -28,9 +39,12 @@ const ClientTradeDetails = ({ trades, loading, clientId, endDate }) => {
 
   const formatNumber = (value) => {
     if (!value && value !== 0) return '-';
+    // Truncate to 2 decimals without rounding.
+    const truncated = truncateTo2Decimals(value);
     return new Intl.NumberFormat('en-IN', {
       maximumFractionDigits: 2,
-    }).format(value);
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   // Calculate summary statistics

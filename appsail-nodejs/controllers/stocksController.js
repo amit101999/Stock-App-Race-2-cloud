@@ -867,8 +867,8 @@ exports.getStats = async (req, res) => {
       overall: {
         totalTrades,
         totalNetAmount,
-        avgTradeValue:
-          totalTrades > 0 ? Math.round(totalNetAmount / totalTrades) : 0,
+        // Return actual calculated average without rounding/truncation.
+        avgTradeValue: totalTrades > 0 ? totalNetAmount / totalTrades : 0,
         buyTrades,
         sellTrades,
         completedTrades,
@@ -1773,6 +1773,97 @@ exports.getHoldingsSummary = async (req, res) => {
 
     console.log(`[getHoldingsSummary] Total bonus records fetched for client ${clientId}: ${allBonusRows.length}`);
 
+    // Pre-group bonuses by normalized CompanyName to avoid repeated scanning per stock
+    const bonusesByName = new Map(); // key: normalized company name, value: [{ date, qty }]
+
+    if (allBonusRows.length > 0) {
+      console.log('[getHoldingsSummary] Building bonus index by normalized company name...');
+      allBonusRows.forEach((bonusRow) => {
+        const b = bonusRow.Bonus || bonusRow[bonusTableName] || bonusRow;
+
+        // Extract and normalize CompanyName
+        const bonusCompanyName =
+          b.CompanyName ||
+          b['CompanyName'] ||
+          b[`${bonusTableName}.CompanyName`] ||
+          b['Bonus.CompanyName'] ||
+          '';
+
+        const normalizedCompany = normalizeName(bonusCompanyName);
+        if (!normalizedCompany) {
+          return;
+        }
+
+        // Extract and validate ClientId
+        const rawClientId =
+          b.ClientId !== undefined
+            ? b.ClientId
+            : b.clientId !== undefined
+            ? b.clientId
+            : b[`${bonusTableName}.ClientId`] !== undefined
+            ? b[`${bonusTableName}.ClientId`]
+            : b['Bonus.ClientId'] !== undefined
+            ? b['Bonus.ClientId']
+            : null;
+
+        let bonusClientId = null;
+        if (rawClientId !== undefined && rawClientId !== null) {
+          bonusClientId =
+            typeof rawClientId === 'number' ? rawClientId : Number(rawClientId);
+          if (isNaN(bonusClientId)) {
+            bonusClientId = null;
+          }
+        }
+
+        // Client must match (or be null)
+        if (bonusClientId !== null && bonusClientId !== clientId) {
+          return;
+        }
+
+        // Extract ExDate and respect endDate filter if provided
+        const exDate =
+          b.ExDate ||
+          b['ExDate'] ||
+          b[`${bonusTableName}.ExDate`] ||
+          b['Bonus.ExDate'] ||
+          '';
+
+        if (endDate && exDate) {
+          const exDateObj = new Date(exDate);
+          const endDateObj = new Date(endDate);
+          if (exDateObj > endDateObj) {
+            return; // outside of as-of date window
+          }
+        }
+
+        // Extract BonusShare
+        const bonusShare =
+          b.BonusShare ||
+          b['BonusShare'] ||
+          b[`${bonusTableName}.BonusShare`] ||
+          b['Bonus.BonusShare'] ||
+          0;
+        const bonusQty = Number(bonusShare) || 0;
+        if (!bonusQty) {
+          return;
+        }
+
+        const bonusDate =
+          exDate && String(exDate).trim() !== '' ? exDate : '1900-01-01';
+
+        if (!bonusesByName.has(normalizedCompany)) {
+          bonusesByName.set(normalizedCompany, []);
+        }
+        bonusesByName.get(normalizedCompany).push({
+          date: bonusDate,
+          qty: bonusQty,
+        });
+      });
+      console.log(
+        `[getHoldingsSummary] Bonus index built with ${bonusesByName.size} unique company names`
+      );
+    }
+
     // Track all unique Security_Name values from raw data (before filtering)
     const allUniqueNames = new Set();
     (allRows || []).forEach((r) => {
@@ -1805,6 +1896,7 @@ exports.getHoldingsSummary = async (req, res) => {
       const tranType = t.Tran_Type || t.tran_type || t.TranType || t.tranType || "";
       const qty = t.QTY || t.qty || t.Qty || 0;
       const netAmount = t.Net_Amount || t.net_amount || t.NetAmount || t.netAmount || 0;
+      const rate = t.RATE || t.rate || t.Rate || 0;
       const trandate = t.TRANDATE || t.trandate || t.Trandate || "";
       const rowid = t.ROWID || t.rowid || t.Rowid || 0;
 
@@ -1836,6 +1928,12 @@ exports.getHoldingsSummary = async (req, res) => {
         tranType: String(tranType).trim(),
         qty: Number(qty) || 0,
         netAmount: Number(netAmount) || 0,
+        rate: Number(rate) || 0,
+        netrate:
+          Number(t.NETRATE) ||
+          Number(t.netrate) ||
+          Number(t.netRate) ||
+          0,
         trandate: String(trandate).trim(),
         rowid: Number(rowid) || 0,
       });
@@ -1870,147 +1968,137 @@ exports.getHoldingsSummary = async (req, res) => {
         return (a.rowid || 0) - (b.rowid || 0);
       });
 
-      // Get matching bonuses for this stock (filter by ExDate if endDate is provided)
+      // Get matching bonuses for this stock via precomputed index (already date/client filtered)
       const normalizedStockName = normalizeName(stockName);
-      const matchingBonuses = [];
-      
-      allBonusRows.forEach((bonusRow) => {
-        const b = bonusRow.Bonus || bonusRow[bonusTableName] || bonusRow;
-        
-        // Extract CompanyName
-        const bonusCompanyName = b.CompanyName || 
-                                b['CompanyName'] || 
-                                b[`${bonusTableName}.CompanyName`] || 
-                                b['Bonus.CompanyName'] || '';
-        
-        // Extract ClientId to verify it matches
-        const rawClientId = b.ClientId !== undefined ? b.ClientId : 
-                           (b.clientId !== undefined ? b.clientId : 
-                            (b[`${bonusTableName}.ClientId`] !== undefined ? b[`${bonusTableName}.ClientId`] :
-                             (b['Bonus.ClientId'] !== undefined ? b['Bonus.ClientId'] : null)));
-        
-        let bonusClientId = null;
-        if (rawClientId !== undefined && rawClientId !== null) {
-          bonusClientId = typeof rawClientId === 'number' ? rawClientId : Number(rawClientId);
-          if (isNaN(bonusClientId)) {
-            bonusClientId = null;
+      const matchingBonuses = bonusesByName.get(normalizedStockName) || [];
+
+      // Build a combined list of transactions and bonus events and compute holdings
+      // using the SAME logic as the StockDetailModal on the frontend so values match.
+      const combinedEvents = [];
+
+      // Real trade transactions (exclude all dividend-related types)
+      sortedTransactions.forEach((t) => {
+        const rawType = String(t.tranType || "").toUpperCase().trim();
+        const isDividend =
+          rawType === "DIO" ||
+          rawType === "DIVIDEND" ||
+          rawType === "DIVIDEND REINVEST" ||
+          rawType === "DIVIDEND REINVESTMENT" ||
+          rawType === "DIVIDEND RECEIVED" ||
+          rawType.startsWith("DIVIDEND") ||
+          rawType.includes("DIVIDEND");
+        if (isDividend) return;
+
+        combinedEvents.push({
+          tranType: rawType,
+          qty: t.qty,
+          netAmount: t.netAmount,
+          rate: t.rate,
+          netrate: t.netrate || t.netRate || t.NETRATE || 0,
+          trandate: t.trandate,
+          rowid: t.rowid,
+          isBonus: false,
+        });
+      });
+
+      // Treat matched bonuses as explicit BONUS events with zero cost
+      matchingBonuses.forEach((b, idx) => {
+        combinedEvents.push({
+          tranType: "BONUS",
+          qty: b.qty,
+          netAmount: 0,
+          rate: 0,
+          trandate: b.date || "1900-01-01",
+          rowid: 1000000 + idx,
+          isBonus: true,
+        });
+      });
+
+      // Sort chronologically (same ordering as frontend)
+      combinedEvents.sort((a, b) => {
+        const d1 = a.trandate ? new Date(a.trandate).getTime() : 0;
+        const d2 = b.trandate ? new Date(b.trandate).getTime() : 0;
+        if (d1 !== d2) return d1 - d2;
+        return (a.rowid || 0) - (b.rowid || 0);
+      });
+
+      // FIFO lots: { qty, price }. Mirrors the lotQueue logic in StockDetailModal.
+      const lotQueue = [];
+
+      combinedEvents.forEach((transaction) => {
+        const tranType = transaction.tranType || "";
+        const isBuy =
+          tranType.startsWith("B") ||
+          tranType === "BUY" ||
+          tranType === "PURCHASE" ||
+          tranType.includes("BUY");
+        const isSell =
+          tranType.startsWith("S") ||
+          tranType === "SELL" ||
+          tranType === "SALE" ||
+          tranType.includes("SELL");
+        const isBonus = tranType === "BONUS" || transaction.isBonus === true;
+        const isSQB = tranType === "SQB";
+        const isSQS = tranType === "SQS";
+        const isOPI = tranType === "OPI";
+        const isOPO = tranType === "OPO";
+        const isNF = tranType === "NF-" || tranType.startsWith("NF-");
+
+        const isBuyType = isBuy || isSQB || isOPI;
+        const isSellType = isSell || isSQS || isOPO || isNF;
+
+        const qty = Math.abs(Number(transaction.qty) || 0);
+        if (qty === 0) return;
+
+        // Match frontend pricing: prefer netrate, then rate, then derive from netAmount/qty
+        const netrate =
+          Number(transaction.netrate) ||
+          Number(transaction.netRate) ||
+          Number(transaction.NETRATE) ||
+          0;
+        let price = netrate > 0 ? netrate : Number(transaction.rate) || 0;
+        if (price === 0 && transaction.netAmount && Math.abs(transaction.netAmount) > 0) {
+          price = Math.abs(transaction.netAmount) / qty;
+        }
+
+        if (isBuyType && !isBonus) {
+          lotQueue.push({ qty, price });
+        } else if (isBonus) {
+          const bonusQty = qty;
+          if (bonusQty > 0) {
+            lotQueue.push({ qty: bonusQty, price: 0 });
           }
-        }
-        
-        // Extract ExDate
-        const exDate = b.ExDate || b['ExDate'] || b[`${bonusTableName}.ExDate`] || b['Bonus.ExDate'] || '';
-        
-        // Match by normalized company name and client ID
-        const normalizedBonusName = normalizeName(bonusCompanyName);
-        const matchesCompany = normalizedBonusName === normalizedStockName;
-        const matchesClient = bonusClientId === null || bonusClientId === clientId;
-        
-        // Filter by ExDate if endDate is provided
-        let matchesDate = true;
-        if (endDate && exDate) {
-          const exDateObj = new Date(exDate);
-          const endDateObj = new Date(endDate);
-          matchesDate = exDateObj <= endDateObj;
-        }
-        
-        if (matchesCompany && matchesClient && matchesDate) {
-          // Extract BonusShare
-          const bonusShare = b.BonusShare || 
-                            b['BonusShare'] || 
-                            b[`${bonusTableName}.BonusShare`] || 
-                            b['Bonus.BonusShare'] || 0;
-          const bonusQty = Number(bonusShare) || 0;
-          
-          // Use ExDate as the date, fallback to '1900-01-01' if missing
-          const bonusDate = exDate && exDate.trim() !== '' ? exDate : '1900-01-01';
-          
-          matchingBonuses.push({
-            date: bonusDate,
-            qty: bonusQty
-          });
+        } else if (isSellType) {
+          let remaining = qty;
+          while (remaining > 0 && lotQueue.length > 0) {
+            const lot = lotQueue[0];
+            if (lot.qty <= remaining) {
+              remaining -= lot.qty;
+              lotQueue.shift();
+            } else {
+              lot.qty -= remaining;
+              remaining = 0;
+            }
+          }
         }
       });
 
-      // Combine transactions and bonuses, then sort chronologically
-      const allEvents = [
-        ...sortedTransactions.map(t => ({ 
-          type: 'transaction', 
-          data: t, 
-          date: t.trandate || '1900-01-01' 
-        })),
-        ...matchingBonuses.map(b => ({ 
-          type: 'bonus', 
-          data: b, 
-          date: b.date 
-        }))
-      ];
-
-      // Sort all events by date
-      allEvents.sort((a, b) => {
-        const dateA = a.date ? new Date(a.date).getTime() : 0;
-        const dateB = b.date ? new Date(b.date).getTime() : 0;
-        if (dateA !== dateB) return dateA - dateB;
-        // Transactions come before bonuses on the same date
-        if (a.type !== b.type) {
-          return a.type === 'transaction' ? -1 : 1;
-        }
-        return 0;
-      });
-
-      // Process events chronologically to calculate current holding
-      let currentHolding = 0;
-      
-      for (const event of allEvents) {
-        if (event.type === 'transaction') {
-          const t = event.data;
-          const type = String(t.tranType || "").toUpperCase().trim();
-          const rawQty = Number(t.qty) || 0;
-          const qty = Math.abs(rawQty);
-
-          // Skip zero quantity transactions
-          if (qty === 0) continue;
-
-          // Check for dividend-related transactions - exclude from holdings calculation
-          const isDividend = type === "DIO" || 
-                            type === "DIVIDEND" || 
-                            type === "DIVIDEND REINVEST" || 
-                            type === "DIVIDEND REINVESTMENT" ||
-                            type === "DIVIDEND RECEIVED" ||
-                            type.startsWith("DIVIDEND") ||
-                            type.includes("DIVIDEND");
-          
-          if (isDividend) continue; // Skip dividend transactions
-
-          // Determine if buy or sell
-          const isSQB = type === "SQB";
-          const isSQS = type === "SQS";
-          const isOPI = type === "OPI";
-          const isOPO = type === "OPO";
-          const isNF = type === "NF-" || type.startsWith("NF-");
-          
-          const isBuy = type.startsWith("B") || isSQB || isOPI;
-          const isSell = type.startsWith("S") || isSQS || isOPO || isNF;
-
-          if (isBuy) {
-            currentHolding += qty;
-          } else if (isSell) {
-            currentHolding -= qty;
-            if (currentHolding < 0) currentHolding = 0; // Safety check
-          }
-        } else if (event.type === 'bonus') {
-          // Bonus: Add to holdings
-          const bonusQty = event.data.qty || 0;
-          currentHolding += bonusQty;
-        }
-      }
+      const holdingQty = lotQueue.reduce((sum, lot) => sum + lot.qty, 0);
+      const totalCostBasis = lotQueue.reduce(
+        (sum, lot) => sum + lot.qty * lot.price,
+        0
+      );
+      const avgCost = holdingQty > 0 ? totalCostBasis / holdingQty : 0;
+      const holdingValue = holdingQty > 0 ? totalCostBasis : 0;
 
       // Include all stocks, even with zero holdings
-      // Only return basic info: stock name, code, and current holding
-      // Other calculations (profit, weighted average, etc.) will be done when stock is clicked
+      // Return stock name, code, current holding quantity and cost-based holding value/avg cost
       result.push({
         stockName,
         stockCode,
-        currentHolding,
+        currentHolding: holdingQty,
+        avgCost,
+        holdingValue,
       });
     }
 
@@ -3086,8 +3174,12 @@ exports.getStockTransactionHistory = async (req, res) => {
         }
         transaction.averageCostOfHoldings = averageCostOfHoldings;
         
-        // Debug logging for all transactions to track holdings
-        console.log(`[getStockTransactionHistory] Transaction: ${transaction.trandate}, Type: ${transaction.tranType}, Qty: ${qty}, IsBuy: ${isBuy}, IsSell: ${isSell}, Holdings: ${holdingsBefore} -> ${currentHoldings}, ProfitLoss: ${profitLoss !== null ? profitLoss : 'N/A'}, AvgCostOfHoldings: ${averageCostOfHoldings.toFixed(2)}`);
+        // Debug logging for all transactions to track holdings (no rounding)
+        console.log(
+          `[getStockTransactionHistory] Transaction: ${transaction.trandate}, Type: ${transaction.tranType}, Qty: ${qty}, IsBuy: ${isBuy}, IsSell: ${isSell}, Holdings: ${holdingsBefore} -> ${currentHoldings}, ProfitLoss: ${
+            profitLoss !== null ? profitLoss : 'N/A'
+          }, AvgCostOfHoldings: ${averageCostOfHoldings}`
+        );
         
         mergedTransactions.push(transaction);
       } else if (event.type === 'bonus') {
@@ -3749,12 +3841,13 @@ exports.exportClientTransactionsToExcel = async (req, res) => {
             TYPE: tx.tranType || '',
             'STOCK NAME': tx.securityName || securityName,
             QUANTITY: qty,
-            PRICE: displayPrice > 0 ? (Math.floor(displayPrice * 100) / 100).toFixed(2) : '0.00',
-            'TOTAL AMOUNT': Math.abs(tx.netAmount || (qty * displayPrice)),
+            // Use full precision for numeric values; Excel can format as needed.
+            PRICE: displayPrice > 0 ? displayPrice : 0,
+            'TOTAL AMOUNT': Math.abs(tx.netAmount || qty * displayPrice),
             HOLDING: currentHoldings,
-            WAP: wap > 0 ? (Math.floor(wap * 100) / 100).toFixed(2) : '-',
-            'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? (Math.floor(avgCostOfHoldings * 100) / 100).toFixed(2) : '-',
-            'P/L': profitLoss !== null ? (Math.floor(profitLoss * 100) / 100).toFixed(2) : '-'
+            WAP: wap > 0 ? wap : '-',
+            'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? avgCostOfHoldings : '-',
+            'P/L': profitLoss !== null ? profitLoss : '-',
           });
 
         } else if (event.type === 'bonus') {
@@ -3782,9 +3875,9 @@ exports.exportClientTransactionsToExcel = async (req, res) => {
               PRICE: 0,
               'TOTAL AMOUNT': 0,
               HOLDING: currentHoldings,
-              WAP: wap > 0 ? (Math.floor(wap * 100) / 100).toFixed(2) : '-',
-              'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? (Math.floor(avgCostOfHoldings * 100) / 100).toFixed(2) : '-',
-              'P/L': '-'
+              WAP: wap > 0 ? wap : '-',
+              'AVG COST OF HOLDINGS': avgCostOfHoldings > 0 ? avgCostOfHoldings : '-',
+              'P/L': '-',
             });
           }
         }

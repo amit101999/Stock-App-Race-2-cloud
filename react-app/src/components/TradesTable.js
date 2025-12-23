@@ -44,13 +44,24 @@ const TradesTable = ({ filters, onFilterChange }) => {
     }
   };
 
+  const truncateTo2Decimals = (num) => {
+    if (typeof num !== 'number') {
+      const parsed = Number(num);
+      if (Number.isNaN(parsed)) return num;
+      num = parsed;
+    }
+    return Math.trunc(num * 100) / 100;
+  };
+
   const formatCurrency = (value) => {
     if (!value && value !== 0) return '-';
+    const truncated = truncateTo2Decimals(value);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
       maximumFractionDigits: 2,
-    }).format(value);
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   const formatDate = (dateString) => {
@@ -68,7 +79,11 @@ const TradesTable = ({ filters, onFilterChange }) => {
 
   const formatNumber = (value) => {
     if (value === null || value === undefined || value === '') return '-';
-    return new Intl.NumberFormat('en-IN').format(value);
+    const truncated = truncateTo2Decimals(value);
+    return new Intl.NumberFormat('en-IN', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   const getStatusBadge = (status) => {

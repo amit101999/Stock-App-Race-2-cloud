@@ -8,7 +8,7 @@ const UploadProgressBanner = ({ progress }) => {
   }
 
   const formatNumber = (num) => {
-    if (!num) return '0';
+    if (!num && num !== 0) return '0';
     return new Intl.NumberFormat('en-IN').format(num);
   };
 
@@ -68,7 +68,11 @@ const UploadProgressBanner = ({ progress }) => {
                 style={{ width: `${progress.progress || 0}%` }}
               />
             </div>
-            <span className="banner-progress-percent">{Math.round(progress.progress || 0)}%</span>
+            <span className="banner-progress-percent">
+              {progress.progress !== undefined && progress.progress !== null
+                ? `${progress.progress}%`
+                : '0%'}
+            </span>
           </div>
         </div>
       </div>

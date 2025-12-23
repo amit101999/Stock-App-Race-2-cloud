@@ -42,21 +42,23 @@ const StockDetailModal = ({ isOpen, onClose, stock, clientId, endDate }) => {
     }
   }, [isOpen, stock, clientId, fetchTransactions]);
 
-  // Helper function to truncate to 2 decimal places (no rounding)
-  const truncateTo2Decimals = (value) => {
-    if (!value && value !== 0) return 0;
-    return Math.floor(value * 100) / 100;
+  const truncateTo2Decimals = (num) => {
+    if (typeof num !== 'number') {
+      const parsed = Number(num);
+      if (Number.isNaN(parsed)) return num;
+      num = parsed;
+    }
+    return Math.trunc(num * 100) / 100;
   };
 
   const formatCurrency = (value) => {
-    if (!value && value !== 0) return '₹0.00';
-    // Truncate to 2 decimal places (no rounding)
+    if (!value && value !== 0) return '₹0';
     const truncated = truncateTo2Decimals(value);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
     }).format(truncated);
   };
 
@@ -76,101 +78,191 @@ const StockDetailModal = ({ isOpen, onClose, stock, clientId, endDate }) => {
 
   const formatNumber = (value) => {
     if (!value && value !== 0) return '0';
-    return new Intl.NumberFormat('en-IN').format(value);
+    const truncated = truncateTo2Decimals(value);
+    return new Intl.NumberFormat('en-IN', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
-  // Calculate summary from transactions
-  // Initialize all variables to ensure they're always defined
-  // Note: All dividend-related transactions are excluded from holdings calculation
-  const buyTransactions = Array.isArray(transactions) ? transactions.filter(t => {
-    const type = t.tranType ? String(t.tranType).toUpperCase().trim() : '';
-    // Include Buy transactions and additional types that add to holdings
-    const isBuy = type.startsWith('B') || type === 'BUY' || type === 'PURCHASE' || type.includes('BUY');
-    const isSQB = type === 'SQB'; // Sell Quantity Buy - treated as buy
-    const isOPI = type === 'OPI'; // Opening Position In - treated as buy
-    // Exclude all dividend-related transactions from holdings calculation
-    const isDividend = type === 'DIO' || 
-                       type === 'DIVIDEND' || 
-                       type === 'DIVIDEND REINVEST' || 
-                       type === 'DIVIDEND REINVESTMENT' ||
-                       type === 'DIVIDEND RECEIVED' ||
-                       type.startsWith('DIVIDEND') ||
-                       type.includes('DIVIDEND');
-    return (isBuy || isSQB || isOPI) && !isDividend;
-  }) : [];
-  
-  const sellTransactions = Array.isArray(transactions) ? transactions.filter(t => {
-    const type = t.tranType ? String(t.tranType).toUpperCase().trim() : '';
-    // Include Sell transactions and additional types that reduce holdings
-    const isSell = type.startsWith('S') || type === 'SELL' || type === 'SALE' || type.includes('SELL');
-    const isSQS = type === 'SQS'; // Sell Quantity Sell - treated as sell
-    const isOPO = type === 'OPO'; // Opening Position Out - treated as sell
-    const isNF = type === 'NF-' || type.startsWith('NF-'); // NF- transaction type - treated as sell
-    return isSell || isSQS || isOPO || isNF;
-  }) : [];
+  // Calculate summary from transactions using same classification/FIFO rules
+  // as the transaction table and backend, so cards match the detailed rows.
+  const computeSummaryFromTransactions = (allTransactions) => {
+    if (!Array.isArray(allTransactions) || allTransactions.length === 0) {
+      return {
+        totalBuyQty: 0,
+        totalSellQty: 0,
+        totalBuyAmount: 0,
+        totalSellAmount: 0,
+        currentHolding: 0,
+        weightedAverageBuyPrice: 0,
+        profit: 0,
+      };
+    }
 
-  // Sum all buy transactions (handle both positive and negative amounts)
-  const totalBuyQty = buyTransactions.reduce((sum, t) => {
-    const qty = Math.abs(Number(t.qty) || 0);
-    return sum + qty;
-  }, 0);
-  
-  const totalBuyAmount = buyTransactions.reduce((sum, t) => {
-    const amount = Number(t.netAmount) || 0;
-    // For buy transactions, use absolute value (some systems store as negative)
-    const absAmount = Math.abs(amount);
-    return sum + absAmount;
-  }, 0);
+    // Filter transactions exactly like the table (exclude dividends, include bonus & special types)
+    const filteredTransactions = allTransactions.filter((transaction) => {
+      const type = transaction.tranType
+        ? String(transaction.tranType).toUpperCase().trim()
+        : '';
+      const isBuy =
+        type.startsWith('B') ||
+        type === 'BUY' ||
+        type === 'PURCHASE' ||
+        type.includes('BUY');
+      const isSell =
+        type.startsWith('S') ||
+        type === 'SELL' ||
+        type === 'SALE' ||
+        type.includes('SELL');
+      const isBonus = type === 'BONUS' || transaction.isBonus === true;
+      const isSQB = type === 'SQB'; // Sell Quantity Buy
+      const isSQS = type === 'SQS'; // Sell Quantity Sell
+      const isOPI = type === 'OPI'; // Opening Position In
+      const isOPO = type === 'OPO'; // Opening Position Out
+      const isNF = type === 'NF-' || type.startsWith('NF-'); // NF- transaction type
+      const isDividend =
+        type === 'DIO' ||
+        type === 'DIVIDEND' ||
+        type === 'DIVIDEND REINVEST' ||
+        type === 'DIVIDEND REINVESTMENT' ||
+        type === 'DIVIDEND RECEIVED' ||
+        type.startsWith('DIVIDEND') ||
+        type.includes('DIVIDEND');
+      return (
+        (isBuy || isSell || isBonus || isSQB || isSQS || isOPI || isOPO || isNF) &&
+        !isDividend
+      );
+    });
 
-  // Sum all sell transactions (handle both positive and negative amounts)
-  const totalSellQty = sellTransactions.reduce((sum, t) => {
-    const qty = Math.abs(Number(t.qty) || 0);
-    return sum + qty;
-  }, 0);
-  
-  const totalSellAmount = sellTransactions.reduce((sum, t) => {
-    const amount = Number(t.netAmount) || 0;
-    // For sell transactions, use absolute value (some systems store as negative)
-    const absAmount = Math.abs(amount);
-    return sum + absAmount;
-  }, 0);
+    const lotQueue = []; // FIFO lots: { qty, price }
 
-  const currentHolding = totalBuyQty - totalSellQty;
-  
-  // Calculate Weighted Average Buy Price
-  // Formula: Sum of (Quantity × Price) for all buy transactions / Total Buy Quantity
-  // Use netrate if available, fallback to rate
-  const weightedAverageBuyPrice = totalBuyQty > 0 
-    ? buyTransactions.reduce((sum, t) => {
-        const qty = Math.abs(Number(t.qty) || 0);
-        // Prioritize netrate, fallback to rate
-        const netrate = Number(t.netrate) || Number(t.netRate) || Number(t.NETRATE) || 0;
-        const rate = Number(t.rate) || 0;
-        const price = netrate > 0 ? netrate : rate;
-        // If still 0, calculate from netAmount as last resort
-        const finalPrice = price > 0 ? price : (qty > 0 && t.netAmount && Math.abs(t.netAmount) > 0 ? Math.abs(t.netAmount) / qty : 0);
-        return sum + (qty * finalPrice);
-      }, 0) / totalBuyQty
-    : 0;
-  
-  // Profit/Loss = Total Money Received from Sells - Total Money Spent on Buys
-  // Positive = Profit, Negative = Loss
-  // If there are no sell transactions, profit/loss should be 0 (unrealized)
-  const profit = totalSellQty > 0 ? (totalSellAmount - totalBuyAmount) : 0;
+    let totalBuyQty = 0;
+    let totalSellQty = 0;
+    let totalBuyAmount = 0;
+    let totalSellAmount = 0;
+    let totalProfitLoss = 0;
+
+    filteredTransactions.forEach((transaction) => {
+      const tranType = transaction.tranType
+        ? String(transaction.tranType).toUpperCase().trim()
+        : '';
+      const isBuy =
+        tranType.startsWith('B') ||
+        tranType === 'BUY' ||
+        tranType === 'PURCHASE' ||
+        tranType.includes('BUY');
+      const isSell =
+        tranType.startsWith('S') ||
+        tranType === 'SELL' ||
+        tranType === 'SALE' ||
+        tranType.includes('SELL');
+      const isBonus = tranType === 'BONUS' || transaction.isBonus === true;
+      const isSQB = tranType === 'SQB'; // Sell Quantity Buy - treated as buy
+      const isSQS = tranType === 'SQS'; // Sell Quantity Sell - treated as sell
+      const isOPI = tranType === 'OPI'; // Opening Position In - treated as buy
+      const isOPO = tranType === 'OPO'; // Opening Position Out - treated as sell
+      const isNF = tranType === 'NF-' || tranType.startsWith('NF-'); // NF- transaction type - treated as sell
+
+      const isBuyType = isBuy || isSQB || isOPI;
+      const isSellType = isSell || isSQS || isOPO || isNF;
+
+      const netrate =
+        Number(transaction.netrate) ||
+        Number(transaction.netRate) ||
+        Number(transaction.NETRATE) ||
+        0;
+      const rate = Number(transaction.rate) || 0;
+      let price = netrate > 0 ? netrate : rate;
+      if (
+        price === 0 &&
+        transaction.netAmount &&
+        Math.abs(transaction.netAmount) > 0 &&
+        transaction.qty
+      ) {
+        price = Math.abs(transaction.netAmount) / Math.abs(transaction.qty);
+      }
+
+      const qty = Math.abs(Number(transaction.qty) || 0);
+
+      if (isBuyType && !isBonus) {
+        if (qty > 0) {
+          lotQueue.push({ qty, price });
+        }
+        totalBuyQty += qty;
+        const amount =
+          Number(transaction.netAmount) || qty * price;
+        totalBuyAmount += Math.abs(amount);
+      } else if (isBonus) {
+        const bonusQty = qty;
+        if (bonusQty > 0) {
+          lotQueue.push({ qty: bonusQty, price: 0 });
+        }
+      } else if (isSellType) {
+        // Consume from FIFO lots
+        let remaining = qty;
+        while (remaining > 0 && lotQueue.length > 0) {
+          const lot = lotQueue[0];
+          if (lot.qty <= remaining) {
+            remaining -= lot.qty;
+            lotQueue.shift();
+          } else {
+            lot.qty -= remaining;
+            remaining = 0;
+          }
+        }
+
+        totalSellQty += qty;
+        const amount =
+          Number(transaction.netAmount) || qty * price;
+        totalSellAmount += Math.abs(amount);
+
+        if (
+          transaction.profitLoss !== undefined &&
+          transaction.profitLoss !== null
+        ) {
+          totalProfitLoss += transaction.profitLoss;
+        }
+      }
+    });
+
+    // Derive current holdings & WAP from remaining lots
+    const holdingAfter = lotQueue.reduce((sum, lot) => sum + lot.qty, 0);
+    const totalCostBasis = lotQueue.reduce(
+      (sum, lot) => sum + lot.qty * lot.price,
+      0
+    );
+    const weightedAverageBuyPrice =
+      holdingAfter > 0 ? totalCostBasis / holdingAfter : 0;
+
+    return {
+      totalBuyQty,
+      totalSellQty,
+      totalBuyAmount,
+      totalSellAmount,
+      currentHolding: holdingAfter,
+      weightedAverageBuyPrice,
+      // Use FIFO-based profit/loss from backend per SELL transaction
+      profit: totalProfitLoss,
+    };
+  };
 
   if (!isOpen || !stock) return null;
 
-  // Use calculated values from transactions (more accurate) if transactions are loaded
-  // Otherwise fallback to backend values
-  // This ensures consistency between cards and transaction table
   const hasTransactions = Array.isArray(transactions) && transactions.length > 0;
-  const displayBuyQty = hasTransactions ? totalBuyQty : (stock?.totalBuyQty || 0);
-  const displaySellQty = hasTransactions ? totalSellQty : (stock?.totalSellQty || 0);
-  const displayBuyAmount = hasTransactions ? totalBuyAmount : (stock?.totalBuyAmount || 0);
-  const displaySellAmount = hasTransactions ? totalSellAmount : (stock?.totalSellAmount || 0);
-  const displayCurrentHolding = hasTransactions ? currentHolding : (stock?.currentHolding || 0);
-  const displayProfit = hasTransactions ? profit : (stock?.profit || 0);
-  const displayWeightedAvgBuyPrice = hasTransactions ? weightedAverageBuyPrice : (stock?.weightedAverageBuyPrice || 0);
+  const summary = hasTransactions
+    ? computeSummaryFromTransactions(transactions)
+    : null;
+
+  // Use calculated values from transactions (FIFO-based, matching backend) if available,
+  // otherwise fall back to values from holdings summary.
+  const displayBuyQty = summary ? summary.totalBuyQty : (stock?.totalBuyQty || 0);
+  const displaySellQty = summary ? summary.totalSellQty : (stock?.totalSellQty || 0);
+  const displayBuyAmount = summary ? summary.totalBuyAmount : (stock?.totalBuyAmount || 0);
+  const displaySellAmount = summary ? summary.totalSellAmount : (stock?.totalSellAmount || 0);
+  const displayCurrentHolding = summary ? summary.currentHolding : (stock?.currentHolding || 0);
+  const displayProfit = summary ? summary.profit : (stock?.profit || 0);
+  const displayWeightedAvgBuyPrice = summary ? summary.weightedAverageBuyPrice : (stock?.weightedAverageBuyPrice || 0);
 
   return (
     <div className="modal-overlay" onClick={onClose}>

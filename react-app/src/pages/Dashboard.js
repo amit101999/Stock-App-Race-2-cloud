@@ -271,18 +271,33 @@ const Dashboard = () => {
     bonusFileInputRef.current?.click();
   };
 
+  const truncateTo2Decimals = (num) => {
+    if (typeof num !== 'number') {
+      const parsed = Number(num);
+      if (Number.isNaN(parsed)) return num;
+      num = parsed;
+    }
+    return Math.trunc(num * 100) / 100;
+  };
+
   const formatCurrency = (value) => {
-    if (!value) return '₹0';
+    if (!value && value !== 0) return '₹0';
+    const truncated = truncateTo2Decimals(value);
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(value);
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   const formatNumber = (value) => {
-    if (!value) return '0';
-    return new Intl.NumberFormat('en-IN').format(value);
+    if (!value && value !== 0) return '0';
+    const truncated = truncateTo2Decimals(value);
+    return new Intl.NumberFormat('en-IN', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(truncated);
   };
 
   const { overall = {} } = stats;
@@ -361,21 +376,39 @@ const Dashboard = () => {
               <StatCard
                 title="Buy Trades"
                 value={formatNumber(overall.buyTrades)}
-                subtitle={`${overall.totalTrades ? ((overall.buyTrades / overall.totalTrades) * 100).toFixed(1) : 0}% of total`}
+                subtitle={`${
+                  overall.totalTrades
+                    ? truncateTo2Decimals(
+                        (overall.buyTrades / overall.totalTrades) * 100
+                      )
+                    : 0
+                }% of total`}
                 icon={TrendingUp}
                 trend="up"
               />
               <StatCard
                 title="Sell Trades"
                 value={formatNumber(overall.sellTrades)}
-                subtitle={`${overall.totalTrades ? ((overall.sellTrades / overall.totalTrades) * 100).toFixed(1) : 0}% of total`}
+                subtitle={`${
+                  overall.totalTrades
+                    ? truncateTo2Decimals(
+                        (overall.sellTrades / overall.totalTrades) * 100
+                      )
+                    : 0
+                }% of total`}
                 icon={TrendingUp}
                 trend="down"
               />
               <StatCard
                 title="Completed"
                 value={formatNumber(overall.completedTrades)}
-                subtitle={`${overall.totalTrades ? ((overall.completedTrades / overall.totalTrades) * 100).toFixed(1) : 0}% success rate`}
+                subtitle={`${
+                  overall.totalTrades
+                    ? truncateTo2Decimals(
+                        (overall.completedTrades / overall.totalTrades) * 100
+                      )
+                    : 0
+                }% success rate`}
                 icon={Activity}
                 trend="up"
               />
